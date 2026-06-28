@@ -146,6 +146,27 @@ test('endpoint nodes are opt-in (off by default, on with {endpoints:true})', () 
     'file → endpoint "defines" edge');
 });
 
+test('test files and config files are excluded by default (opt-in)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-tc-'));
+  const w = (rel, c) => { const a = path.join(root, rel); fs.mkdirSync(path.dirname(a), { recursive: true }); fs.writeFileSync(a, c); return a; };
+  w('package.json', JSON.stringify({ name: 'app', dependencies: { react: '^18' } }));
+  const files = [
+    w('src/components/Button.jsx', 'export default function Button(){}'),
+    w('src/components/Button.test.jsx', 'test("x",()=>{})'),
+    w('.env', 'SECRET=1'),
+    w('.env.local', 'X=2'),
+  ];
+
+  const off = analyse(root, files);
+  assert.ok(!off.nodes.some((n) => n.type === 'test'), 'no test nodes by default');
+  assert.ok(!off.nodes.some((n) => n.type === 'config'), 'no config nodes by default');
+  assert.ok(off.nodes.some((n) => n.label === 'Button'), 'real component still present');
+
+  const on = analyse(root, files, { tests: true, config: true });
+  assert.ok(on.nodes.some((n) => n.type === 'test'), 'test nodes appear with {tests:true}');
+  assert.ok(on.nodes.some((n) => n.type === 'config'), 'config nodes appear with {config:true}');
+});
+
 test('database migrations and non-code files are excluded', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-mig-'));
   const w = (rel, c) => { const a = path.join(root, rel); fs.mkdirSync(path.dirname(a), { recursive: true }); fs.writeFileSync(a, c); return a; };
