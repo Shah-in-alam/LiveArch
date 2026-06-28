@@ -363,8 +363,8 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ```bash
 # Clone
-git clone https://github.com/yourusername/livearch.git
-cd livearch
+git clone https://github.com/Shah-in-alam/LiveArch.git
+cd LiveArch
 
 # Install deps
 npm install

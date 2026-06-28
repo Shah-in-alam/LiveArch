@@ -1,0 +1,39 @@
+{
+  "name": "livearch",
+  "version": "0.1.0",
+  "description": "Real-time architecture diagrams that live inside your repo and update automatically as you code.",
+  "type": "commonjs",
+  "bin": {
+    "livearch": "bin/livearch.js"
+  },
+  "main": "lib/analyser.js",
+  "scripts": {
+    "start": "node bin/livearch.js",
+    "test": "node --test test/"
+  },
+  "keywords": [
+    "architecture",
+    "diagram",
+    "developer-tools",
+    "visualization",
+    "chokidar",
+    "websocket",
+    "live"
+  ],
+  "author": "Shah-in-alam",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
