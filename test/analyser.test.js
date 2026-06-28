@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { analyse, classifyFile, parseImports } = require('../lib/analyser');
+const { analyse, classifyFile, parseImports, detectCustomHook } = require('../lib/analyser');
 const template = require('../lib/template');
 
 // Build a throwaway fixture project on disk.
@@ -32,6 +32,10 @@ function makeFixture() {
     write('src/api/users.js', 'app.get("/users", () => {});'),
     write('src/services/db.js', 'module.exports = {};'),
     write('src/data/wines.js', 'export const wines = [];'),
+    // custom hook by filename convention
+    write('src/utils/useToggle.js', 'export function useToggle(){ return [true]; }'),
+    // custom hook by content (generic component file that actually defines a hook)
+    write('src/i18n.jsx', 'export function useLang(){ return "en"; }'),
     write('public/logo.svg', '<svg></svg>'),
     write('src/App.test.jsx', 'test("x", () => {});'),
   ];
@@ -91,6 +95,28 @@ test('analyse builds REAL edges from import statements (v0.2)', () => {
 
   assert.ok(has(app, shop), 'App → Shop import edge');
   assert.ok(has(shop, wines), 'Shop → wines import edge');
+});
+
+test('detects custom hooks by filename and by content', () => {
+  const { root, files } = makeFixture();
+  const arch = analyse(root, files);
+  const toggle = arch.nodes.find((n) => n.label === 'useToggle');
+  const lang = arch.nodes.find((n) => n.label === 'i18n');
+
+  assert.ok(toggle && toggle.type === 'hook', 'useToggle.js detected as hook by filename');
+  assert.ok(lang && lang.type === 'hook', 'i18n.jsx detected as hook by exported useLang');
+  assert.equal(lang.icon, '🪝');
+
+  // a plain component must NOT be misclassified as a hook
+  const shop = arch.nodes.find((n) => n.label === 'Shop');
+  assert.equal(shop.type, 'component');
+});
+
+test('detectCustomHook recognises hook definitions, not hook usage', () => {
+  const { root } = makeFixture();
+  assert.equal(detectCustomHook(path.join(root, 'src/utils/useToggle.js')), true);
+  // Shop.jsx imports/uses things but defines no hook
+  assert.equal(detectCustomHook(path.join(root, 'src/components/Shop.jsx')), false);
 });
 
 test('template.render produces self-contained HTML with baked-in ARCH', () => {
