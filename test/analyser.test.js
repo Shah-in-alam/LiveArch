@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { analyse, classifyFile, parseImports, detectCustomHook } = require('../lib/analyser');
+const { analyse, classifyFile, parseImports, detectCustomHook, parseRoutes } = require('../lib/analyser');
 const template = require('../lib/template');
 
 // Build a throwaway fixture project on disk.
@@ -29,7 +29,7 @@ function makeFixture() {
     write('src/App.jsx', 'import Shop from "./components/Shop.jsx";\nexport default function App() {}'),
     write('src/components/Shop.jsx', 'import { wines } from "../data/wines.js";\nexport default function Shop() {}'),
     write('src/pages/Home.jsx', 'export default function Home() {}'),
-    write('src/api/users.js', 'app.get("/users", () => {});'),
+    write('src/api/users.js', 'app.get("/users", () => {});\nrouter.post("/users", () => {});\nfastify.delete("/users/:id", () => {});'),
     write('src/services/db.js', 'module.exports = {};'),
     write('src/data/wines.js', 'export const wines = [];'),
     // custom hook by filename convention
@@ -117,6 +117,28 @@ test('detectCustomHook recognises hook definitions, not hook usage', () => {
   assert.equal(detectCustomHook(path.join(root, 'src/utils/useToggle.js')), true);
   // Shop.jsx imports/uses things but defines no hook
   assert.equal(detectCustomHook(path.join(root, 'src/components/Shop.jsx')), false);
+});
+
+test('parseRoutes extracts Express/Fastify endpoints', () => {
+  const { root } = makeFixture();
+  const routes = parseRoutes(path.join(root, 'src/api/users.js'));
+  const keys = routes.map((r) => r.method + ' ' + r.route);
+  assert.ok(keys.includes('GET /users'), 'app.get detected');
+  assert.ok(keys.includes('POST /users'), 'router.post detected');
+  assert.ok(keys.includes('DELETE /users/:id'), 'fastify.delete detected');
+});
+
+test('analyse adds endpoint nodes + defines edges (v0.2)', () => {
+  const { root, files } = makeFixture();
+  const arch = analyse(root, files);
+  const endpoints = arch.nodes.filter((n) => n.type === 'route' && n.label.includes('/'));
+  assert.ok(endpoints.length >= 3, 'has endpoint nodes (GET /users, POST /users, ...)');
+
+  const get = arch.nodes.find((n) => n.label === 'GET /users');
+  assert.ok(get && get.layer === 'backend', 'endpoint in backend layer');
+  const file = arch.nodes.find((n) => n.label === 'users'); // the api/users.js node
+  assert.ok(arch.edges.some((e) => e.from === file.id && e.to === get.id && e.label === 'defines'),
+    'file → endpoint "defines" edge');
 });
 
 test('template.render produces self-contained HTML with baked-in ARCH', () => {
