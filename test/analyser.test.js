@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { analyse, classifyFile } = require('../lib/analyser');
+const { analyse, classifyFile, parseImports } = require('../lib/analyser');
 const template = require('../lib/template');
 
 // Build a throwaway fixture project on disk.
@@ -26,8 +26,8 @@ function makeFixture() {
   }));
   const files = [
     write('src/main.jsx', 'import App from "./App.jsx";'),
-    write('src/App.jsx', 'export default function App() {}'),
-    write('src/components/Shop.jsx', 'export default function Shop() {}'),
+    write('src/App.jsx', 'import Shop from "./components/Shop.jsx";\nexport default function App() {}'),
+    write('src/components/Shop.jsx', 'import { wines } from "../data/wines.js";\nexport default function Shop() {}'),
     write('src/pages/Home.jsx', 'export default function Home() {}'),
     write('src/api/users.js', 'app.get("/users", () => {});'),
     write('src/services/db.js', 'module.exports = {};'),
@@ -68,6 +68,29 @@ test('analyse builds nodes and edges', () => {
   // entry should bootstrap the framework
   const bootstraps = arch.edges.find((e) => e.label === 'bootstraps');
   assert.ok(bootstraps, 'entry → framework edge exists');
+});
+
+test('parseImports extracts relative specifiers only', () => {
+  const { root } = makeFixture();
+  const specs = parseImports(path.join(root, 'src/App.jsx'));
+  assert.ok(specs.includes('./components/Shop.jsx'), 'relative import captured');
+  // bare package imports (e.g. "react") must be excluded
+  assert.ok(!specs.some((s) => !s.startsWith('.') && !s.startsWith('/')), 'no bare specifiers');
+});
+
+test('analyse builds REAL edges from import statements (v0.2)', () => {
+  const { root, files } = makeFixture();
+  const arch = analyse(root, files);
+  const importEdges = arch.edges.filter((e) => e.label === 'imports');
+  assert.ok(importEdges.length >= 3, 'has import edges');
+
+  const find = (label) => arch.nodes.find((n) => n.label === label);
+  // App.jsx is an entry node (label = filename); Shop/wines are component/data (label = basename).
+  const app = find('App.jsx'), shop = find('Shop'), wines = find('wines');
+  const has = (a, b) => arch.edges.some((e) => e.from === a.id && e.to === b.id && e.label === 'imports');
+
+  assert.ok(has(app, shop), 'App → Shop import edge');
+  assert.ok(has(shop, wines), 'Shop → wines import edge');
 });
 
 test('template.render produces self-contained HTML with baked-in ARCH', () => {
