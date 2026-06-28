@@ -141,6 +141,29 @@ test('analyse adds endpoint nodes + defines edges (v0.2)', () => {
     'file → endpoint "defines" edge');
 });
 
+test('scans workspace package.json files in a monorepo', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-mono-'));
+  const w = (rel, obj) => {
+    const abs = path.join(root, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, JSON.stringify(obj));
+    return abs;
+  };
+  // root only knows about turbo — the real stack lives in workspaces
+  w('package.json', { name: 'mono', workspaces: ['apps/*', 'packages/*'], devDependencies: { turbo: '^2' } });
+  w('apps/api/package.json', { name: 'api', dependencies: { express: '^4', pg: '^8' } });
+  w('apps/web/package.json', { name: 'web', dependencies: { react: '^18' }, devDependencies: { vite: '^5' } });
+  w('packages/shared/package.json', { name: 'shared', dependencies: { redis: '^4' } });
+
+  const files = [path.join(root, 'package.json')];
+  const arch = analyse(root, files);
+  const ids = arch.nodes.map((n) => n.id);
+  assert.ok(ids.includes('dep-express'), 'express from apps/api detected');
+  assert.ok(ids.includes('dep-pg'), 'postgres from apps/api detected');
+  assert.ok(ids.includes('dep-react'), 'react from apps/web detected');
+  assert.ok(ids.includes('dep-redis'), 'redis from packages/shared detected');
+});
+
 test('template.render produces self-contained HTML with baked-in ARCH', () => {
   const { root, files } = makeFixture();
   const arch = analyse(root, files);
