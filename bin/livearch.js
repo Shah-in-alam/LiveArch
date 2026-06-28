@@ -27,7 +27,7 @@ const template = require('../lib/template');
 // Argument parsing
 // ---------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { path: process.cwd(), port: 7842, output: '.visualarch.html', ignore: [], open: true, watch: true };
+  const opts = { path: process.cwd(), port: 7842, output: '.visualarch.html', ignore: [], open: true, watch: true, routes: false };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -37,6 +37,7 @@ function parseArgs(argv) {
     else if (a === '--ignore') opts.ignore.push(argv[++i]);
     else if (a === '--no-open') opts.open = false;
     else if (a === '--no-watch') opts.watch = false;
+    else if (a === '--routes' || a === '--endpoints') opts.routes = true;
     else if (!a.startsWith('-')) rest.push(a);
   }
   if (rest[0]) opts.path = path.resolve(rest[0]);
@@ -57,6 +58,7 @@ Options:
   --ignore <glob>       Additional ignore pattern (repeatable)
   --no-open             Don't print the open hint
   --no-watch            Generate the diagram once and exit (CI mode)
+  --routes              Include individual HTTP endpoints as nodes (off by default)
   --help                Show this help
 `;
 
@@ -75,7 +77,7 @@ function main() {
   const trackedFiles = new Set();
 
   function buildOnce() {
-    const arch = analyse(WATCH_PATH, [...trackedFiles]);
+    const arch = analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes });
     const html = template.render(arch, { port: opts.port });
     fs.writeFileSync(OUTPUT, html);
     return arch;
@@ -95,10 +97,10 @@ function main() {
   // Serve freshly-rendered HTML so the browser always gets current state.
   // (Rendering in-memory also sidesteps sendFile path quirks on Windows.)
   app.get('/', (_req, res) => {
-    const arch = analyse(WATCH_PATH, [...trackedFiles]);
+    const arch = analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes });
     res.type('html').send(template.render(arch, { port: opts.port }));
   });
-  app.get('/arch.json', (_req, res) => res.json(analyse(WATCH_PATH, [...trackedFiles])));
+  app.get('/arch.json', (_req, res) => res.json(analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes })));
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server });
@@ -111,7 +113,7 @@ function main() {
   }
 
   wss.on('connection', (ws) => {
-    const arch = analyse(WATCH_PATH, [...trackedFiles]);
+    const arch = analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes });
     ws.send(JSON.stringify({ type: 'init', arch }));
   });
 
