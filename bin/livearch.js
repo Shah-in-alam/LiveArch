@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const { spawn } = require('child_process');
 const chokidar = require('chokidar');
 const express = require('express');
 const { WebSocketServer } = require('ws');
@@ -155,7 +156,10 @@ function main() {
     .on('ready', () => {
       ready = true;
       const arch = buildOnce();
-      server.listen(opts.port, () => printBanner(opts, WATCH_PATH, arch, trackedFiles.size));
+      server.listen(opts.port, () => {
+        printBanner(opts, WATCH_PATH, arch, trackedFiles.size);
+        if (opts.open) openBrowser(`http://localhost:${opts.port}`);
+      });
     });
 
   // --- Graceful shutdown -----------------------------------------------
@@ -171,6 +175,29 @@ function main() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+/**
+ * Open a URL in the default browser, cross-platform. Best-effort: failures are
+ * swallowed so a headless/CI environment never crashes the watcher.
+ */
+function openBrowser(url) {
+  try {
+    let cmd, args;
+    if (process.platform === 'win32') {
+      // `start` is a cmd builtin; empty "" is the (ignored) window title.
+      cmd = 'cmd'; args = ['/c', 'start', '', url];
+    } else if (process.platform === 'darwin') {
+      cmd = 'open'; args = [url];
+    } else {
+      cmd = 'xdg-open'; args = [url];
+    }
+    const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
+    child.on('error', () => {}); // ignore (e.g. xdg-open missing)
+    child.unref();
+  } catch {
+    /* best-effort: never block startup on browser launch */
+  }
+}
+
 function collectFiles(root, extraIgnore = [], depth = 6, prefix = '', out = []) {
   if (depth < 0) return out;
   let entries;
@@ -198,6 +225,9 @@ function printBanner(opts, watchPath, arch, fileCount) {
   console.log(`🌐 Live URL  : http://localhost:${opts.port}`);
   console.log(line);
   console.log(`✓ ${arch.nodes.length} nodes detected, ${fileCount} files watched\n`);
+  console.log(opts.open
+    ? `Opening the diagram in your browser…  (use --no-open to disable)`
+    : `Open http://localhost:${opts.port} in your browser.`);
   console.log(`Diagram auto-updates every time you save a file.`);
   console.log(`Press Ctrl+C to stop.\n`);
 }
