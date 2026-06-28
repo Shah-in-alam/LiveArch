@@ -32,9 +32,15 @@ Diagram updates live — new nodes flash green ✅
 
 ## Demo
 
-![LiveArch Demo](docs/demo.gif)
+> 🎬 A recorded GIF demo is coming soon (see [`docs/`](docs/)). In the meantime, try it yourself in under a minute:
 
-Open `.visualarch.html` in your browser. Run `livearch` in your terminal. Now save any file — watch the diagram update instantly.
+```bash
+npx livearch            # in any JS/TS project
+# open the printed http://localhost:7842 in your browser
+# save any file — watch the diagram update instantly
+```
+
+Open `.visualarch.html` in your browser. Run `livearch` in your terminal. Now save any file — watch the diagram update instantly: new nodes flash green and a toast shows the changed file.
 
 ---
 
@@ -363,8 +369,8 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ```bash
 # Clone
-git clone https://github.com/yourusername/livearch.git
-cd livearch
+git clone https://github.com/Shah-in-alam/LiveArch.git
+cd LiveArch
 
 # Install deps
 npm install
