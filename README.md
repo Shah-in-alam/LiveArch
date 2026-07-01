@@ -446,7 +446,14 @@ ngrok http 7842                # or: cloudflared tunnel --url http://localhost:7
 ```
 Remote teammates open the tunnel URL and get real-time updates (works over HTTPS too).
 
-> A permanent hosted URL and accounts/access-control are a separate roadmap item (they need a backend service). The three options above cover live team viewing without any hosted infrastructure.
+**4. Permanent hosted URL (self-host the Phase-1 server)**
+A minimal Next.js server in [`server/`](server/) gives your diagram a permanent, shareable URL that stays up even when your laptop is off:
+```bash
+cd server && npm install && npm run dev          # http://localhost:3000
+livearch push <handle>/<repo> --server http://localhost:3000
+# → open http://localhost:3000/u/<handle>/<repo>
+```
+This is the Phase-1 MVP of [`docs/BACKEND-DESIGN.md`](docs/BACKEND-DESIGN.md) (stores the last snapshot). Live sync, accounts, and access control are later phases.
 
 ---
 

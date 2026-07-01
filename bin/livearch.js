@@ -58,6 +58,7 @@ const HELP = `
 Usage:  livearch [path] [options]
         livearch diff <base-ref> [head-ref]     Compare architecture between two git refs
         livearch badge [path] [--output file]   Write an SVG architecture badge for your README
+        livearch push <handle>/<repo>           Publish the diagram to a hosted server (permanent URL)
 
 Arguments:
   path                  Path to watch (default: current directory)
@@ -84,6 +85,7 @@ function main() {
   const raw = process.argv.slice(2);
   if (raw[0] === 'diff') return cmdDiff(raw.slice(1));
   if (raw[0] === 'badge') return cmdBadge(raw.slice(1));
+  if (raw[0] === 'push') return cmdPush(raw.slice(1));
 
   const opts = parseArgs(raw);
   if (opts.help) {
@@ -307,6 +309,44 @@ function cmdBadge(args) {
   fs.writeFileSync(outPath, svg);
   console.log(`⬡  Wrote badge: ${output}  (${arch.nodes.length} nodes)`);
   console.log(`   Embed in your README:  ${badgeMarkdown(output)}`);
+}
+
+/** Publish the current architecture to a hosted LiveArch server (Phase 1). */
+async function cmdPush(args) {
+  let server = (process.env.LIVEARCH_SERVER || 'http://localhost:3000').replace(/\/$/, '');
+  let token = process.env.LIVEARCH_INGEST_TOKEN || '';
+  let dir = process.cwd();
+  const pos = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--server') server = args[++i].replace(/\/$/, '');
+    else if (args[i] === '--token') token = args[++i];
+    else if (args[i] === '--path') dir = path.resolve(args[++i]);
+    else if (!args[i].startsWith('-')) pos.push(args[i]);
+  }
+  const target = pos[0];
+  if (!target || !target.includes('/')) {
+    console.error('Usage: livearch push <handle>/<repo> [--server <url>] [--token <t>]');
+    process.exit(1);
+  }
+  const [handle, slug] = target.split('/');
+  const arch = analyseDir(dir);
+  try {
+    const res = await fetch(server + '/api/ingest', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ handle, slug, arch, token }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error(`✗ push failed (${res.status}): ${data.error || 'unknown error'}`);
+      process.exit(1);
+    }
+    console.log(`⬡  Pushed ${arch.nodes.length} nodes → ${server}/u/${handle}/${slug}`);
+  } catch (e) {
+    console.error(`✗ could not reach ${server}: ${e.message}`);
+    console.error('  Is the server running?  (cd server && npm run dev)');
+    process.exit(1);
+  }
 }
 
 /**
