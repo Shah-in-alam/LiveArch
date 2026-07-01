@@ -2,6 +2,7 @@
 
 > **Real-time architecture diagrams that live inside your repo and update automatically as you code.**
 
+[![CI](https://github.com/Shah-in-alam/LiveArch/actions/workflows/ci.yml/badge.svg)](https://github.com/Shah-in-alam/LiveArch/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/livearch.svg)](https://www.npmjs.com/package/livearch)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
