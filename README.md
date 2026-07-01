@@ -251,12 +251,15 @@ Python, Go, and other language support is planned — see [Roadmap](#roadmap).
 - [x] Layer-grouped diagram with arrows
 - [x] Click-to-inspect panel
 
-### v0.2 — Smarter Analysis
-- [ ] Parse actual `import` statements to build real edges
-- [ ] Detect custom hooks from file content
-- [ ] Detect API endpoints from Express/Fastify routes
-- [ ] Detect database models from Prisma schema
-- [ ] Python project support (`requirements.txt`, FastAPI, Django)
+### v0.2 — Smarter Analysis ✅
+- [x] Parse actual `import` statements to build real edges
+- [x] Detect custom hooks from file content
+- [x] Detect API endpoints from Express/Fastify routes (opt-in `--routes`)
+- [x] Detect database models from Prisma schema
+- [x] Python project support (`requirements.txt` / `pyproject.toml` / `setup.py`, FastAPI, Django)
+- [x] Monorepo workspace detection (scans `apps/*`, `packages/*`)
+- [x] Official brand logos for detected technologies
+- [x] `--no-watch` CI mode and auto-open browser
 
 ### v0.3 — VS Code Extension
 - [ ] Install from VS Code marketplace

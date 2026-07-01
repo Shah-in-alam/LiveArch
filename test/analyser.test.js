@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { analyse, classifyFile, parseImports, detectCustomHook, parseRoutes } = require('../lib/analyser');
+const { analyse, classifyFile, parseImports, detectCustomHook, parseRoutes, parsePrismaModels } = require('../lib/analyser');
 const template = require('../lib/template');
 
 // Build a throwaway fixture project on disk.
@@ -204,6 +204,48 @@ test('scans workspace package.json files in a monorepo', () => {
   assert.ok(ids.includes('dep-pg'), 'postgres from apps/api detected');
   assert.ok(ids.includes('dep-react'), 'react from apps/web detected');
   assert.ok(ids.includes('dep-redis'), 'redis from packages/shared detected');
+});
+
+test('detects Prisma models from schema.prisma', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-prisma-'));
+  const w = (rel, c) => { const a = path.join(root, rel); fs.mkdirSync(path.dirname(a), { recursive: true }); fs.writeFileSync(a, c); return a; };
+  w('package.json', JSON.stringify({ name: 'app', dependencies: { '@prisma/client': '^5' } }));
+  const schema = w('prisma/schema.prisma', 'datasource db { provider = "postgresql" }\nmodel User {\n id Int @id\n}\nmodel Post {\n id Int @id\n}\n');
+
+  assert.deepEqual(parsePrismaModels(schema).sort(), ['Post', 'User']);
+  const arch = analyse(root, [path.join(root, 'package.json'), schema]);
+  const models = arch.nodes.filter((n) => n.type === 'model');
+  assert.ok(models.some((n) => n.label === 'User') && models.some((n) => n.label === 'Post'), 'model nodes created');
+  assert.ok(arch.edges.some((e) => e.from === 'dep-prisma' && e.to === 'model-User' && e.label === 'defines'),
+    'prisma → model edge');
+});
+
+test('detects Python tech stack + classifies .py files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-py-'));
+  const w = (rel, c) => { const a = path.join(root, rel); fs.mkdirSync(path.dirname(a), { recursive: true }); fs.writeFileSync(a, c); return a; };
+  w('package.json', JSON.stringify({ name: 'mono', workspaces: ['py'] }));
+  const files = [
+    path.join(root, 'package.json'),
+    w('py/requirements.txt', 'fastapi>=0.100\nsqlalchemy==2.0\npsycopg2-binary\nredis'),
+    w('py/app/main.py', 'app = FastAPI()'),
+    w('py/app/models.py', 'class User: pass'),
+    w('py/app/middleware.py', 'def mw(): pass'),
+    w('py/app/detector.py', 'def detect(): pass'),
+    w('py/app/__init__.py', ''),
+  ];
+  const arch = analyse(root, files);
+  const ids = arch.nodes.map((n) => n.id);
+  assert.ok(ids.includes('dep-fastapi'), 'FastAPI detected');
+  assert.ok(ids.includes('dep-sqlalchemy'), 'SQLAlchemy detected');
+  assert.ok(ids.includes('dep-pg'), 'psycopg → PostgreSQL detected');
+  assert.ok(ids.includes('dep-python'), 'Python language node');
+
+  const byLabel = (l) => arch.nodes.find((n) => n.label === l);
+  assert.equal(byLabel('main.py').type, 'entry', 'main.py is entry');
+  assert.equal(byLabel('models').type, 'model', 'models.py is model');
+  assert.equal(byLabel('middleware').type, 'middleware', 'middleware.py is middleware');
+  assert.equal(byLabel('detector').type, 'module', 'detector.py is a module');
+  assert.ok(!arch.nodes.some((n) => n.file && n.file.endsWith('__init__.py')), '__init__.py skipped');
 });
 
 test('template.render produces self-contained HTML with baked-in ARCH', () => {
