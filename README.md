@@ -367,14 +367,17 @@ livearch --no-open                # don't auto-open the browser
 livearch --no-watch               # generate once and exit (CI)
 ```
 
-### AI review (Pro)
+### AI review (Pro) — with a free Preview
 
 ```bash
+livearch --review                 # free heuristic Preview (no key needed)
+livearch --review --demo          # force the Preview even if a key is set
+
 export ANTHROPIC_API_KEY=sk-ant-...
-livearch --review                 # print architecture suggestions and exit
+livearch --review                 # full AI review powered by Claude
 ```
 
-You can also click **🧠 AI Review** in the diagram, or the VS Code extension. Override the model with `LIVEARCH_MODEL` (default `claude-opus-4-8`).
+Without a key you get a free **Preview** (graph heuristics — over-connected components, missing auth/DB layers, isolated nodes). Set `ANTHROPIC_API_KEY` to unlock the full **Pro** review, which sends the graph to Claude for richer, context-aware suggestions. Click **🧠 AI Review** in the diagram (or use the VS Code extension). Override the model with `LIVEARCH_MODEL` (default `claude-opus-4-8`).
 
 ### Architecture diff
 
