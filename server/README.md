@@ -18,8 +18,12 @@ npm run dev            # http://localhost:3000
 From any project (in another terminal):
 
 ```bash
-# analyse the current project and push its architecture
+# publish once
 node /path/to/LiveArch/bin/livearch.js push me/my-repo --server http://localhost:3000
+
+# …or keep it live — push on every save; viewers update in real time (SSE)
+node /path/to/LiveArch/bin/livearch.js share me/my-repo --server http://localhost:3000
+
 # → open http://localhost:3000/u/me/my-repo
 ```
 
@@ -30,9 +34,18 @@ with `--token` (or the `LIVEARCH_INGEST_TOKEN` env var).
 
 | Route | Purpose |
 |-------|---------|
-| `POST /api/ingest` | CLI pushes `{ handle, slug, arch, token }` — stores the latest snapshot |
-| `GET /u/<handle>/<slug>` | The permanent viewer URL — renders the last snapshot |
+| `POST /api/ingest` | CLI pushes `{ handle, slug, arch, token }` — stores the latest snapshot and fans it out |
+| `GET /u/<handle>/<slug>` | The permanent viewer URL — renders the last snapshot and subscribes to live updates |
+| `GET /api/stream/<handle>/<slug>` | Server-Sent Events stream of live updates for viewers |
 | `GET /` | Landing page |
+
+## Live sync
+
+`livearch share` pushes on every save; `/api/ingest` publishes to an in-process
+pub/sub (`lib/bus.js`), and each viewer's `/api/stream/...` SSE connection
+receives the update and re-renders. The in-process bus is correct for a single
+Node instance; for multi-instance serverless, swap `lib/bus.js` for Upstash
+Redis pub/sub (see the design doc).
 
 ## Storage
 

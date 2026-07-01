@@ -396,7 +396,25 @@ test('hosted store round-trips a snapshot and renders a snapshot viewer', () => 
   const html = renderViewer(snap);
   assert.match(html, /<!DOCTYPE html>/);
   assert.match(html, /const SNAPSHOT = true/);
+
+  // hosted viewer with handle/slug wires up the SSE live stream
+  const liveHtml = renderViewer(snap, { handle: 'me', slug: 'my-repo' });
+  assert.match(liveHtml, /\/api\/stream\/me\/my-repo/);
+  assert.match(liveHtml, /new EventSource/);
   delete process.env.LIVEARCH_DATA_DIR;
+});
+
+test('pub/sub bus delivers published updates to subscribers', () => {
+  const { publish, subscribe } = require('../server/lib/bus');
+  const got = [];
+  const unsub = subscribe('me/repo', (d) => got.push(d));
+  publish('me/repo', { arch: { name: 'a' } });
+  publish('other/repo', { arch: { name: 'x' } }); // different key — ignored
+  assert.equal(got.length, 1);
+  assert.equal(got[0].arch.name, 'a');
+  unsub();
+  publish('me/repo', { arch: { name: 'b' } }); // after unsub — ignored
+  assert.equal(got.length, 1);
 });
 
 test('template.render produces self-contained HTML with baked-in ARCH', () => {

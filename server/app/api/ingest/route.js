@@ -1,5 +1,6 @@
 import { saveSnapshot } from '../../../lib/store';
 import { checkToken } from '../../../lib/auth';
+import { publish } from '../../../lib/bus';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,7 +25,8 @@ export async function POST(req) {
 
   try {
     const saved = saveSnapshot(handle, slug, arch);
-    // Phase 2 will also publish to a realtime channel here.
+    // Fan out to connected SSE viewers (Phase 2 live sync).
+    publish(saved.handle + '/' + saved.slug, { arch });
     return Response.json({ ok: true, url: `/u/${saved.handle}/${saved.slug}`, nodes: arch.nodes.length });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 400 });
