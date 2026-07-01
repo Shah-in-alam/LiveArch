@@ -44,6 +44,7 @@ function parseArgs(argv) {
     else if (a === '--tests') opts.tests = true;
     else if (a === '--config') opts.config = true;
     else if (a === '--review') opts.review = true;
+    else if (a === '--demo') opts.demo = true;
     else if (!a.startsWith('-')) rest.push(a);
   }
   if (rest[0]) opts.path = path.resolve(rest[0]);
@@ -69,7 +70,8 @@ Options:
   --routes              Include individual HTTP endpoints as nodes (off by default)
   --tests               Include test files as nodes (off by default)
   --config              Include config files (.env, …) as nodes (off by default)
-  --review              Print AI architecture suggestions and exit (needs ANTHROPIC_API_KEY)
+  --review              Print architecture suggestions and exit (AI with ANTHROPIC_API_KEY, else free Preview)
+  --demo                Force the free heuristic Preview (with --review)
   --help                Show this help
 `;
 
@@ -105,7 +107,7 @@ function main() {
   // --- AI review: one-shot suggestions and exit ------------------------
   if (opts.review) {
     collectFiles(WATCH_PATH, opts.ignore).forEach((f) => trackedFiles.add(f));
-    runReview(currentArch()).then((code) => process.exit(code));
+    runReview(currentArch(), { demo: opts.demo }).then((code) => process.exit(code));
     return;
   }
 
@@ -128,15 +130,14 @@ function main() {
   });
   app.get('/arch.json', (_req, res) => res.json(currentArch()));
 
-  // AI architecture review (LiveArch Pro) — returns suggestions JSON.
-  app.get('/review', async (_req, res) => {
+  // Architecture review — full AI when ANTHROPIC_API_KEY is set, else a free
+  // heuristic Preview. Pass ?demo=1 to force the Preview.
+  app.get('/review', async (req, res) => {
     try {
-      const { review } = require('../lib/ai/reviewer');
-      const suggestions = await review(currentArch());
-      res.json({ suggestions });
+      const result = await getReview(currentArch(), { demo: req.query.demo === '1' });
+      res.json(result);
     } catch (err) {
-      res.status(err.code === 'NO_API_KEY' ? 402 : 500)
-        .json({ error: err.message, code: err.code || 'ERROR' });
+      res.status(500).json({ error: err.message, code: err.code || 'ERROR' });
     }
   });
 
@@ -303,12 +304,36 @@ function cmdBadge(args) {
   console.log(`   Embed in your README:  ${badgeMarkdown(output)}`);
 }
 
-/** Run an AI review and print the suggestions. Returns an exit code. */
-async function runReview(arch) {
+/**
+ * Get review suggestions. Uses the Claude API when a key is available;
+ * otherwise (or with { demo:true }) falls back to the free heuristic Preview.
+ * @returns {Promise<{suggestions:object[], preview:boolean}>}
+ */
+async function getReview(arch, opts = {}) {
+  const { heuristicReview } = require('../lib/ai/heuristics');
+  const hasKey = !!(opts.apiKey || process.env.ANTHROPIC_API_KEY);
+  if (opts.demo || !hasKey) {
+    return { suggestions: heuristicReview(arch), preview: true };
+  }
   const { review } = require('../lib/ai/reviewer');
-  console.log(`⬡  LiveArch — AI review of ${arch.name} (${arch.nodes.length} nodes)…\n`);
   try {
-    const suggestions = await review(arch);
+    return { suggestions: await review(arch, opts), preview: false };
+  } catch (err) {
+    if (err.code === 'NO_API_KEY' || err.code === 'SDK_MISSING') {
+      return { suggestions: heuristicReview(arch), preview: true, warn: err.message };
+    }
+    throw err;
+  }
+}
+
+/** Run a review and print the suggestions. Returns an exit code. */
+async function runReview(arch, opts = {}) {
+  console.log(`⬡  LiveArch — reviewing ${arch.name} (${arch.nodes.length} nodes)…\n`);
+  try {
+    const { suggestions, preview } = await getReview(arch, opts);
+    if (preview) {
+      console.log('⚡ Preview (free, heuristic). Set ANTHROPIC_API_KEY for the full AI review (LiveArch Pro).\n');
+    }
     if (!suggestions.length) {
       console.log('✓ No architectural concerns found.');
       return 0;
@@ -322,8 +347,6 @@ async function runReview(arch) {
     return 0;
   } catch (err) {
     console.error(`✗ Review failed: ${err.message}`);
-    if (err.code === 'NO_API_KEY') console.error('  Set ANTHROPIC_API_KEY (LiveArch Pro).');
-    if (err.code === 'SDK_MISSING') console.error('  Run: npm install @anthropic-ai/sdk');
     return 1;
   }
 }

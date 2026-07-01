@@ -297,6 +297,27 @@ test('AI reviewer errors clearly without an API key', async () => {
   }
 });
 
+test('heuristic Preview review produces suggestions from the graph', () => {
+  const { heuristicReview } = require('../lib/ai/heuristics');
+  // backend + routes but no auth and no database → two info suggestions
+  const arch = {
+    name: 'api', fileCount: 5,
+    nodes: [
+      { id: 'dep-express', label: 'Express', type: 'backend' },
+      { id: 'file-a', label: 'a', type: 'route' },
+    ],
+    edges: [{ from: 'file-a', to: 'dep-express', label: 'handled by' }],
+  };
+  const out = heuristicReview(arch);
+  assert.ok(out.length >= 2, 'produces suggestions');
+  assert.ok(out.some((s) => /authentication/i.test(s.message)), 'flags missing auth');
+  assert.ok(out.some((s) => /database/i.test(s.message)), 'flags missing database');
+
+  // a healthy tiny graph → no false positives
+  const healthy = { name: 'x', fileCount: 1, nodes: [{ id: 'dep-react', label: 'React', type: 'framework' }], edges: [] };
+  assert.equal(heuristicReview(healthy).length, 0);
+});
+
 test('diffArch reports added/removed nodes and edges', () => {
   const { diffArch, formatDiff } = require('../lib/diff');
   const base = {
