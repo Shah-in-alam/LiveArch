@@ -318,45 +318,44 @@ async function cmdPush(args) {
   let server = (process.env.LIVEARCH_SERVER || 'http://localhost:3000').replace(/\/$/, '');
   let token = process.env.LIVEARCH_INGEST_TOKEN || '';
   let dir = process.cwd();
+  let isPrivate = false;
   const pos = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--server') server = args[++i].replace(/\/$/, '');
     else if (args[i] === '--token') token = args[++i];
     else if (args[i] === '--path') dir = path.resolve(args[++i]);
+    else if (args[i] === '--private') isPrivate = true;
     else if (!args[i].startsWith('-')) pos.push(args[i]);
   }
   const target = pos[0];
   if (!target || !target.includes('/')) {
-    console.error('Usage: livearch push <handle>/<repo> [--server <url>] [--token <t>]');
+    console.error('Usage: livearch push <handle>/<repo> [--server <url>] [--token <t>] [--private]');
     process.exit(1);
   }
   const [handle, slug] = target.split('/');
   const arch = analyseDir(dir);
   try {
-    const res = await fetch(server + '/api/ingest', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ handle, slug, arch, token }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      console.error(`✗ push failed (${res.status}): ${data.error || 'unknown error'}`);
-      process.exit(1);
+    const data = await ingest(server, handle, slug, arch, token, isPrivate);
+    let url = `${server}/u/${handle}/${slug}`;
+    console.log(`⬡  Pushed ${arch.nodes.length} nodes → ${url}`);
+    if (data.visibility === 'private') {
+      console.log(`   Private — viewers need the token: ${url}?token=${encodeURIComponent(token)}`);
     }
-    console.log(`⬡  Pushed ${arch.nodes.length} nodes → ${server}/u/${handle}/${slug}`);
   } catch (e) {
-    console.error(`✗ could not reach ${server}: ${e.message}`);
-    console.error('  Is the server running?  (cd server && npm run dev)');
+    console.error(`✗ push failed: ${e.message}`);
+    if (/^0/.test(e.message) || /fetch failed|ECONN/.test(e.message)) {
+      console.error('  Is the server running?  (cd server && npm run dev)');
+    }
     process.exit(1);
   }
 }
 
 /** POST an arch to a hosted server's ingest endpoint. Returns the parsed body. */
-async function ingest(server, handle, slug, arch, token) {
+async function ingest(server, handle, slug, arch, token, isPrivate) {
   const res = await fetch(server + '/api/ingest', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ handle, slug, arch, token }),
+    body: JSON.stringify({ handle, slug, arch, token, private: !!isPrivate }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`${res.status}: ${data.error || 'push failed'}`);
@@ -371,19 +370,22 @@ function cmdShare(args) {
   let server = (process.env.LIVEARCH_SERVER || 'http://localhost:3000').replace(/\/$/, '');
   let token = process.env.LIVEARCH_INGEST_TOKEN || '';
   let dir = process.cwd();
+  let isPrivate = false;
   const pos = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--server') server = args[++i].replace(/\/$/, '');
     else if (args[i] === '--token') token = args[++i];
     else if (args[i] === '--path') dir = path.resolve(args[++i]);
+    else if (args[i] === '--private') isPrivate = true;
     else if (!args[i].startsWith('-')) pos.push(args[i]);
   }
   const target = pos[0];
   if (!target || !target.includes('/')) {
-    console.error('Usage: livearch share <handle>/<repo> [--server <url>] [--token <t>]');
+    console.error('Usage: livearch share <handle>/<repo> [--server <url>] [--token <t>] [--private]');
     process.exit(1);
   }
   const [handle, slug] = target.split('/');
+  const viewer = `${server}/u/${handle}/${slug}` + (isPrivate ? `?token=${encodeURIComponent(token)}` : '');
   const tracked = new Set();
   let pushing = false;
   async function pushNow() {
@@ -391,7 +393,7 @@ function cmdShare(args) {
     pushing = true;
     try {
       const arch = analyse(dir, [...tracked]);
-      await ingest(server, handle, slug, arch, token);
+      await ingest(server, handle, slug, arch, token, isPrivate);
       const t = new Date().toLocaleTimeString();
       console.log(`  ↑ ${t}  pushed ${arch.nodes.length} nodes`);
     } catch (e) {
@@ -413,8 +415,8 @@ function cmdShare(args) {
     .on('unlink', (f) => { tracked.delete(f); if (ready) schedule(); })
     .on('ready', async () => {
       ready = true;
-      console.log(`⬡  LiveArch — sharing ${dir}`);
-      console.log(`   Viewer : ${server}/u/${handle}/${slug}  ← share this (updates live)`);
+      console.log(`⬡  LiveArch — sharing ${dir}${isPrivate ? '  (private)' : ''}`);
+      console.log(`   Viewer : ${viewer}  ← share this (updates live)`);
       console.log(`   Press Ctrl+C to stop.\n`);
       await pushNow();
     });

@@ -1,13 +1,18 @@
 import { getSnapshot } from '../../../../lib/store';
 import { subscribe } from '../../../../lib/bus';
+import { canRead } from '../../../../lib/projects';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// GET /api/stream/<handle>/<slug> — Server-Sent Events stream of live updates.
+// GET /api/stream/<handle>/<slug>[?token=…] — SSE stream of live updates.
 // The hosted viewer opens this; each `livearch share` push fans out here.
 export async function GET(req, { params }) {
   const { handle, slug } = params;
+  const token = new URL(req.url).searchParams.get('token') || '';
+  if (!canRead(handle, slug, token)) {
+    return new Response('forbidden', { status: 403 });
+  }
   const key = handle + '/' + slug;
   const enc = new TextEncoder();
 

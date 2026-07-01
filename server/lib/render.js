@@ -11,7 +11,11 @@ const template = require('../../lib/template');
 function renderViewer(snapshot, opts = {}) {
   const arch = snapshot && snapshot.arch;
   if (!arch) return null;
-  const streamUrl = opts.handle && opts.slug ? `/api/stream/${opts.handle}/${opts.slug}` : null;
+  let streamUrl = null;
+  if (opts.handle && opts.slug) {
+    streamUrl = `/api/stream/${opts.handle}/${opts.slug}`;
+    if (opts.token) streamUrl += '?token=' + encodeURIComponent(opts.token);
+  }
   return template.render(arch, { snapshot: true, streamUrl });
 }
 

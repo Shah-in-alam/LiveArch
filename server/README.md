@@ -27,8 +27,24 @@ node /path/to/LiveArch/bin/livearch.js share me/my-repo --server http://localhos
 # → open http://localhost:3000/u/me/my-repo
 ```
 
-If you set `LIVEARCH_INGEST_TOKEN` on the server, pass the same value to the CLI
-with `--token` (or the `LIVEARCH_INGEST_TOKEN` env var).
+### Private projects & ownership
+
+Pass a `--token` to claim ownership of a project; only that token can push to it
+afterward. Add `--private` to make it viewable only with the token:
+
+```bash
+livearch push me/secret-app --token <your-secret> --private --server http://localhost:3000
+# → viewers must use  http://localhost:3000/u/me/secret-app?token=<your-secret>
+```
+
+- **First push with a token** creates an owned project. **First push with no
+  token** creates an open project (anyone can push) — handy for local dev.
+- Public projects are viewable by anyone; private ones require the owner token.
+- Tokens are stored **hashed** (SHA-256); the raw token is never persisted.
+
+This is the access-control layer of Phase 3. Full user **accounts** (OAuth /
+Sign in with GitHub) and a persistent multi-user datastore are the remaining
+Phase-3 work — see [`../docs/BACKEND-DESIGN.md`](../docs/BACKEND-DESIGN.md).
 
 ## Endpoints
 
