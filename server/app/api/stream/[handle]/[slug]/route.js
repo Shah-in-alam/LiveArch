@@ -1,0 +1,43 @@
+import { getSnapshot } from '../../../../lib/store';
+import { subscribe } from '../../../../lib/bus';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+// GET /api/stream/<handle>/<slug> — Server-Sent Events stream of live updates.
+// The hosted viewer opens this; each `livearch share` push fans out here.
+export async function GET(req, { params }) {
+  const { handle, slug } = params;
+  const key = handle + '/' + slug;
+  const enc = new TextEncoder();
+
+  const stream = new ReadableStream({
+    start(controller) {
+      const send = (obj) => {
+        try { controller.enqueue(enc.encode('data: ' + JSON.stringify(obj) + '\n\n')); } catch { /* closed */ }
+      };
+      // send the current snapshot immediately, then live updates
+      const snap = getSnapshot(handle, slug);
+      if (snap) send({ type: 'update', arch: snap.arch });
+
+      const unsub = subscribe(key, (data) => send({ type: 'update', arch: data.arch, event: 'change' }));
+      const keepAlive = setInterval(() => {
+        try { controller.enqueue(enc.encode(': keep-alive\n\n')); } catch { /* closed */ }
+      }, 25000);
+
+      req.signal.addEventListener('abort', () => {
+        clearInterval(keepAlive);
+        unsub();
+        try { controller.close(); } catch { /* already closed */ }
+      });
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-store, no-transform',
+      connection: 'keep-alive',
+    },
+  });
+}

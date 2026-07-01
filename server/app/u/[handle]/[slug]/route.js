@@ -17,7 +17,7 @@ export async function GET(_req, { params }) {
       { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } }
     );
   }
-  return new Response(renderViewer(snap), {
+  return new Response(renderViewer(snap, { handle, slug }), {
     headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
   });
 }

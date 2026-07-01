@@ -2,15 +2,17 @@
 
 /**
  * render.js — turn a stored snapshot into the viewer HTML, reusing the exact
- * same diagram template as the CLI (in "snapshot" mode: no live watcher).
+ * same diagram template as the CLI. In hosted mode the viewer subscribes to a
+ * Server-Sent Events stream for live updates.
  */
 
 const template = require('../../lib/template');
 
-function renderViewer(snapshot) {
+function renderViewer(snapshot, opts = {}) {
   const arch = snapshot && snapshot.arch;
   if (!arch) return null;
-  return template.render(arch, { snapshot: true });
+  const streamUrl = opts.handle && opts.slug ? `/api/stream/${opts.handle}/${opts.slug}` : null;
+  return template.render(arch, { snapshot: true, streamUrl });
 }
 
 module.exports = { renderViewer };

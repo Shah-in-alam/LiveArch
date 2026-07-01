@@ -59,6 +59,7 @@ Usage:  livearch [path] [options]
         livearch diff <base-ref> [head-ref]     Compare architecture between two git refs
         livearch badge [path] [--output file]   Write an SVG architecture badge for your README
         livearch push <handle>/<repo>           Publish the diagram to a hosted server (permanent URL)
+        livearch share <handle>/<repo>          Watch + push on every save (hosted viewers update live)
 
 Arguments:
   path                  Path to watch (default: current directory)
@@ -86,6 +87,7 @@ function main() {
   if (raw[0] === 'diff') return cmdDiff(raw.slice(1));
   if (raw[0] === 'badge') return cmdBadge(raw.slice(1));
   if (raw[0] === 'push') return cmdPush(raw.slice(1));
+  if (raw[0] === 'share') return cmdShare(raw.slice(1));
 
   const opts = parseArgs(raw);
   if (opts.help) {
@@ -347,6 +349,76 @@ async function cmdPush(args) {
     console.error('  Is the server running?  (cd server && npm run dev)');
     process.exit(1);
   }
+}
+
+/** POST an arch to a hosted server's ingest endpoint. Returns the parsed body. */
+async function ingest(server, handle, slug, arch, token) {
+  const res = await fetch(server + '/api/ingest', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ handle, slug, arch, token }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`${res.status}: ${data.error || 'push failed'}`);
+  return data;
+}
+
+/**
+ * Watch the project and push its architecture on every save, so hosted viewers
+ * of /u/<handle>/<slug> update live (via the server's SSE stream).
+ */
+function cmdShare(args) {
+  let server = (process.env.LIVEARCH_SERVER || 'http://localhost:3000').replace(/\/$/, '');
+  let token = process.env.LIVEARCH_INGEST_TOKEN || '';
+  let dir = process.cwd();
+  const pos = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--server') server = args[++i].replace(/\/$/, '');
+    else if (args[i] === '--token') token = args[++i];
+    else if (args[i] === '--path') dir = path.resolve(args[++i]);
+    else if (!args[i].startsWith('-')) pos.push(args[i]);
+  }
+  const target = pos[0];
+  if (!target || !target.includes('/')) {
+    console.error('Usage: livearch share <handle>/<repo> [--server <url>] [--token <t>]');
+    process.exit(1);
+  }
+  const [handle, slug] = target.split('/');
+  const tracked = new Set();
+  let pushing = false;
+  async function pushNow() {
+    if (pushing) return;
+    pushing = true;
+    try {
+      const arch = analyse(dir, [...tracked]);
+      await ingest(server, handle, slug, arch, token);
+      const t = new Date().toLocaleTimeString();
+      console.log(`  ↑ ${t}  pushed ${arch.nodes.length} nodes`);
+    } catch (e) {
+      console.error(`  ✗ push failed: ${e.message}`);
+    } finally {
+      pushing = false;
+    }
+  }
+
+  const watcher = chokidar.watch(dir, {
+    ignored: [(p) => p.split(path.sep).some((seg) => IGNORE_DIRS.has(seg))],
+    persistent: true, ignoreInitial: false, depth: 6,
+  });
+  let ready = false, timer = null;
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { pushNow(); }, 500); };
+  watcher
+    .on('add', (f) => { tracked.add(f); if (ready) schedule(); })
+    .on('change', () => { if (ready) schedule(); })
+    .on('unlink', (f) => { tracked.delete(f); if (ready) schedule(); })
+    .on('ready', async () => {
+      ready = true;
+      console.log(`⬡  LiveArch — sharing ${dir}`);
+      console.log(`   Viewer : ${server}/u/${handle}/${slug}  ← share this (updates live)`);
+      console.log(`   Press Ctrl+C to stop.\n`);
+      await pushNow();
+    });
+  process.on('SIGINT', () => { console.log('\n⬡  Stopped sharing.'); watcher.close(); process.exit(0); });
 }
 
 /**

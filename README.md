@@ -446,14 +446,18 @@ ngrok http 7842                # or: cloudflared tunnel --url http://localhost:7
 ```
 Remote teammates open the tunnel URL and get real-time updates (works over HTTPS too).
 
-**4. Permanent hosted URL (self-host the Phase-1 server)**
-A minimal Next.js server in [`server/`](server/) gives your diagram a permanent, shareable URL that stays up even when your laptop is off:
+**4. Permanent hosted URL (self-host the server)**
+A minimal Next.js server in [`server/`](server/) gives your diagram a permanent, shareable URL that stays up even when your laptop is off — and updates **live** for everyone viewing it:
 ```bash
 cd server && npm install && npm run dev          # http://localhost:3000
+
+# publish once:
 livearch push <handle>/<repo> --server http://localhost:3000
-# → open http://localhost:3000/u/<handle>/<repo>
+# …or keep it live — push on every save (viewers update in real time via SSE):
+livearch share <handle>/<repo> --server http://localhost:3000
+# → everyone opens http://localhost:3000/u/<handle>/<repo>
 ```
-This is the Phase-1 MVP of [`docs/BACKEND-DESIGN.md`](docs/BACKEND-DESIGN.md) (stores the last snapshot). Live sync, accounts, and access control are later phases.
+This implements Phases 1–2 of [`docs/BACKEND-DESIGN.md`](docs/BACKEND-DESIGN.md): permanent URL + live sync via Server-Sent Events. Accounts, private projects, and a persistent datastore are later phases.
 
 ---
 
