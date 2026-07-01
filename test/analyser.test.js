@@ -248,6 +248,55 @@ test('detects Python tech stack + classifies .py files', () => {
   assert.ok(!arch.nodes.some((n) => n.file && n.file.endsWith('__init__.py')), '__init__.py skipped');
 });
 
+test('AI reviewer builds a prompt and parses suggestions (mocked client)', async () => {
+  const { review } = require('../lib/ai/reviewer');
+  const { buildUserPrompt, summariseArch } = require('../lib/ai/prompts');
+  const { root, files } = makeFixture();
+  const arch = analyse(root, files);
+
+  // prompt building is pure — no network
+  const prompt = buildUserPrompt(arch);
+  assert.match(prompt, /Nodes:/);
+  assert.ok(summariseArch(arch).nodes.length > 0);
+
+  // inject a fake client so no real API call happens
+  let captured;
+  const fakeClient = {
+    messages: {
+      create: async (params) => {
+        captured = params;
+        return { content: [
+          { type: 'thinking', thinking: 'x' },
+          { type: 'text', text: JSON.stringify({ suggestions: [
+            { severity: 'warning', node: 'file-src/components/Shop.jsx', message: 'Too many connections', suggestion: 'Split it' },
+          ] }) },
+        ] };
+      },
+    },
+  };
+  const out = await review(arch, { client: fakeClient });
+  assert.equal(captured.model, 'claude-opus-4-8', 'defaults to opus-4-8');
+  assert.deepEqual(captured.thinking, { type: 'adaptive' });
+  assert.ok(captured.output_config.format.type === 'json_schema', 'uses structured outputs');
+  assert.equal(out.length, 1);
+  assert.equal(out[0].severity, 'warning');
+});
+
+test('AI reviewer errors clearly without an API key', async () => {
+  const { review, ReviewError } = require('../lib/ai/reviewer');
+  const saved = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    await review({ name: 'x', nodes: [], edges: [], fileCount: 0 });
+    assert.fail('should have thrown');
+  } catch (e) {
+    assert.ok(e instanceof ReviewError);
+    assert.equal(e.code, 'NO_API_KEY');
+  } finally {
+    if (saved) process.env.ANTHROPIC_API_KEY = saved;
+  }
+});
+
 test('template.render produces self-contained HTML with baked-in ARCH', () => {
   const { root, files } = makeFixture();
   const arch = analyse(root, files);

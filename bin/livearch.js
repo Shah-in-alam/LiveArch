@@ -27,7 +27,7 @@ const template = require('../lib/template');
 // Argument parsing
 // ---------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { path: process.cwd(), port: 7842, output: '.visualarch.html', ignore: [], open: true, watch: true, routes: false, tests: false, config: false };
+  const opts = { path: process.cwd(), port: 7842, output: '.visualarch.html', ignore: [], open: true, watch: true, routes: false, tests: false, config: false, review: false };
   const rest = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -40,6 +40,7 @@ function parseArgs(argv) {
     else if (a === '--routes' || a === '--endpoints') opts.routes = true;
     else if (a === '--tests') opts.tests = true;
     else if (a === '--config') opts.config = true;
+    else if (a === '--review') opts.review = true;
     else if (!a.startsWith('-')) rest.push(a);
   }
   if (rest[0]) opts.path = path.resolve(rest[0]);
@@ -63,6 +64,7 @@ Options:
   --routes              Include individual HTTP endpoints as nodes (off by default)
   --tests               Include test files as nodes (off by default)
   --config              Include config files (.env, …) as nodes (off by default)
+  --review              Print AI architecture suggestions and exit (needs ANTHROPIC_API_KEY)
   --help                Show this help
 `;
 
@@ -87,6 +89,17 @@ function main() {
     return arch;
   }
 
+  function currentArch() {
+    return analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes, tests: opts.tests, config: opts.config });
+  }
+
+  // --- AI review: one-shot suggestions and exit ------------------------
+  if (opts.review) {
+    collectFiles(WATCH_PATH, opts.ignore).forEach((f) => trackedFiles.add(f));
+    runReview(currentArch()).then((code) => process.exit(code));
+    return;
+  }
+
   // --- CI mode: generate once and exit ---------------------------------
   if (!opts.watch) {
     // Synchronously collect files so we can analyse without a live watcher.
@@ -104,7 +117,19 @@ function main() {
     const arch = analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes, tests: opts.tests, config: opts.config });
     res.type('html').send(template.render(arch, { port: opts.port }));
   });
-  app.get('/arch.json', (_req, res) => res.json(analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes, tests: opts.tests, config: opts.config })));
+  app.get('/arch.json', (_req, res) => res.json(currentArch()));
+
+  // AI architecture review (LiveArch Pro) — returns suggestions JSON.
+  app.get('/review', async (_req, res) => {
+    try {
+      const { review } = require('../lib/ai/reviewer');
+      const suggestions = await review(currentArch());
+      res.json({ suggestions });
+    } catch (err) {
+      res.status(err.code === 'NO_API_KEY' ? 402 : 500)
+        .json({ error: err.message, code: err.code || 'ERROR' });
+    }
+  });
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server });
@@ -201,6 +226,31 @@ function openBrowser(url) {
     child.unref();
   } catch {
     /* best-effort: never block startup on browser launch */
+  }
+}
+
+/** Run an AI review and print the suggestions. Returns an exit code. */
+async function runReview(arch) {
+  const { review } = require('../lib/ai/reviewer');
+  console.log(`⬡  LiveArch — AI review of ${arch.name} (${arch.nodes.length} nodes)…\n`);
+  try {
+    const suggestions = await review(arch);
+    if (!suggestions.length) {
+      console.log('✓ No architectural concerns found.');
+      return 0;
+    }
+    for (const s of suggestions) {
+      const icon = s.severity === 'warning' ? '⚠' : 'ℹ';
+      const where = s.node ? ` [${s.node}]` : '';
+      console.log(`${icon}${where} ${s.message}`);
+      if (s.suggestion) console.log(`    → ${s.suggestion}`);
+    }
+    return 0;
+  } catch (err) {
+    console.error(`✗ Review failed: ${err.message}`);
+    if (err.code === 'NO_API_KEY') console.error('  Set ANTHROPIC_API_KEY (LiveArch Pro).');
+    if (err.code === 'SDK_MISSING') console.error('  Run: npm install @anthropic-ai/sdk');
+    return 1;
   }
 }
 

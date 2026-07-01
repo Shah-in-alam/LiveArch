@@ -270,11 +270,11 @@ Python, Go, and other language support is planned — see [Roadmap](#roadmap).
 - [ ] Publish to the VS Code marketplace
 
 ### v0.4 — AI Layer (Pro)
-- [ ] "Your Shop component is doing too much — split it"
-- [ ] "You have no error boundaries"
-- [ ] "No auth layer detected"
-- [ ] One-click fix suggestions
-- [ ] Powered by Claude API
+- [x] Architecture suggestions (oversized components, missing layers, security/scalability gaps)
+- [x] Powered by Claude API (`claude-opus-4-8`, structured JSON output)
+- [x] `livearch --review` (CLI) and `🧠 AI Review` button + `/review` endpoint
+- [x] Clicking a suggestion highlights the node in the diagram
+- [ ] One-click fixes / auto-generated GitHub issues
 
 ### v1.0 — Team Features (Pro)
 - [ ] Shareable public diagram URL
