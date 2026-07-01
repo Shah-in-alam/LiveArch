@@ -318,6 +318,31 @@ test('heuristic Preview review produces suggestions from the graph', () => {
   assert.equal(heuristicReview(healthy).length, 0);
 });
 
+test('heuristics detect circular dependencies and payments-without-auth', () => {
+  const { heuristicReview, findImportCycle } = require('../lib/ai/heuristics');
+
+  // A → B → C → A cycle via import edges
+  const nodes = [
+    { id: 'a', label: 'A', type: 'component' },
+    { id: 'b', label: 'B', type: 'component' },
+    { id: 'c', label: 'C', type: 'component' },
+  ];
+  const edges = [
+    { from: 'a', to: 'b', label: 'imports' },
+    { from: 'b', to: 'c', label: 'imports' },
+    { from: 'c', to: 'a', label: 'imports' },
+  ];
+  const cyc = findImportCycle(nodes, edges);
+  assert.ok(cyc && cyc.length === 3, 'finds a 3-node cycle');
+  assert.ok(heuristicReview({ name: 'x', fileCount: 3, nodes, edges })
+    .some((s) => /Circular dependency/.test(s.message)), 'reports the cycle');
+
+  // stripe without auth → warning
+  const pay = heuristicReview({ name: 'p', fileCount: 1,
+    nodes: [{ id: 'dep-stripe', label: 'Stripe', type: 'external' }], edges: [] });
+  assert.ok(pay.some((s) => s.severity === 'warning' && /Payment/.test(s.message)));
+});
+
 test('diffArch reports added/removed nodes and edges', () => {
   const { diffArch, formatDiff } = require('../lib/diff');
   const base = {
