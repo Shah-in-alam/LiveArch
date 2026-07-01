@@ -456,8 +456,11 @@ livearch push <handle>/<repo> --server http://localhost:3000
 # …or keep it live — push on every save (viewers update in real time via SSE):
 livearch share <handle>/<repo> --server http://localhost:3000
 # → everyone opens http://localhost:3000/u/<handle>/<repo>
+
+# private, owner-locked (viewers need the token):
+livearch share <handle>/<repo> --token <secret> --private --server http://localhost:3000
 ```
-This implements Phases 1–2 of [`docs/BACKEND-DESIGN.md`](docs/BACKEND-DESIGN.md): permanent URL + live sync via Server-Sent Events. Accounts, private projects, and a persistent datastore are later phases.
+This implements Phases 1–2 and the access-control part of Phase 3 of [`docs/BACKEND-DESIGN.md`](docs/BACKEND-DESIGN.md): permanent URL, live sync (SSE), and owner-locked private projects. Full OAuth accounts and a persistent multi-user datastore are the remaining hosted work.
 
 ---
 

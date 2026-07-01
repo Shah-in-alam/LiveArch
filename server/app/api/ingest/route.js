@@ -1,11 +1,11 @@
 import { saveSnapshot } from '../../../lib/store';
-import { checkToken } from '../../../lib/auth';
+import { authorizeWrite } from '../../../lib/projects';
 import { publish } from '../../../lib/bus';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// POST /api/ingest  { handle, slug, arch, token }
+// POST /api/ingest  { handle, slug, arch, token, private? }
 // The livearch CLI (`livearch push` / `livearch share`) calls this on each rebuild.
 export async function POST(req) {
   let body;
@@ -16,19 +16,19 @@ export async function POST(req) {
   }
   const { handle, slug, arch, token } = body || {};
 
-  if (!checkToken(token)) {
-    return Response.json({ error: 'unauthorized', code: 'BAD_TOKEN' }, { status: 401 });
-  }
   if (!handle || !slug || !arch || !Array.isArray(arch.nodes)) {
     return Response.json({ error: 'handle, slug, and a valid arch are required' }, { status: 400 });
   }
 
+  let meta;
   try {
-    const saved = saveSnapshot(handle, slug, arch);
-    // Fan out to connected SSE viewers (Phase 2 live sync).
-    publish(saved.handle + '/' + saved.slug, { arch });
-    return Response.json({ ok: true, url: `/u/${saved.handle}/${saved.slug}`, nodes: arch.nodes.length });
+    ({ meta } = authorizeWrite(handle, slug, token, { private: body.private }));
   } catch (e) {
+    if (e.code === 'FORBIDDEN') return Response.json({ error: e.message, code: 'FORBIDDEN' }, { status: 403 });
     return Response.json({ error: e.message }, { status: 400 });
   }
+
+  saveSnapshot(handle, slug, arch);
+  publish(handle + '/' + slug, { arch });
+  return Response.json({ ok: true, url: `/u/${handle}/${slug}`, nodes: arch.nodes.length, visibility: meta.visibility });
 }

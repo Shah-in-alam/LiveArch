@@ -47,4 +47,4 @@ function getSnapshot(handle, slug) {
   }
 }
 
-module.exports = { saveSnapshot, getSnapshot, DATA_DIR };
+module.exports = { saveSnapshot, getSnapshot, DATA_DIR, safeSeg };

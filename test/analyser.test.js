@@ -404,6 +404,31 @@ test('hosted store round-trips a snapshot and renders a snapshot viewer', () => 
   delete process.env.LIVEARCH_DATA_DIR;
 });
 
+test('project access control: ownership + private visibility', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-acl-'));
+  process.env.LIVEARCH_DATA_DIR = dir;
+  for (const m of ['../server/lib/store', '../server/lib/projects']) delete require.cache[require.resolve(m)];
+  const projects = require('../server/lib/projects');
+
+  // first write with a token → creates an owned project (public by default)
+  const a = projects.authorizeWrite('me', 'app', 'owner-tok');
+  assert.equal(a.created, true);
+  assert.equal(a.meta.visibility, 'public');
+  assert.ok(projects.canRead('me', 'app', ''), 'public readable by anyone');
+
+  // a different token cannot write to an owned project
+  assert.throws(() => projects.authorizeWrite('me', 'app', 'other-tok'), (e) => e.code === 'FORBIDDEN');
+  // the owner can, and can flip it private
+  projects.authorizeWrite('me', 'app', 'owner-tok', { private: true });
+  assert.equal(projects.canRead('me', 'app', ''), false, 'private not readable anon');
+  assert.equal(projects.canRead('me', 'app', 'other-tok'), false, 'private not readable by non-owner');
+  assert.equal(projects.canRead('me', 'app', 'owner-tok'), true, 'private readable by owner');
+
+  // a project with no metadata (legacy/open) is readable
+  assert.ok(projects.canRead('nobody', 'nothing', ''));
+  delete process.env.LIVEARCH_DATA_DIR;
+});
+
 test('pub/sub bus delivers published updates to subscribers', () => {
   const { publish, subscribe } = require('../server/lib/bus');
   const got = [];
