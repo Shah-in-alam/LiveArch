@@ -15,13 +15,16 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const { spawn } = require('child_process');
+const os = require('os');
+const { spawn, execFileSync } = require('child_process');
 const chokidar = require('chokidar');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 
 const { analyse, IGNORE_DIRS } = require('../lib/analyser');
 const template = require('../lib/template');
+const { diffArch, formatDiff } = require('../lib/diff');
+const { badgeSvg, badgeMarkdown } = require('../lib/badge');
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -51,6 +54,8 @@ const HELP = `
 ⬡  LiveArch — real-time architecture diagrams that live inside your repo
 
 Usage:  livearch [path] [options]
+        livearch diff <base-ref> [head-ref]     Compare architecture between two git refs
+        livearch badge [path] [--output file]   Write an SVG architecture badge for your README
 
 Arguments:
   path                  Path to watch (default: current directory)
@@ -72,7 +77,11 @@ Options:
 // Main
 // ---------------------------------------------------------------------------
 function main() {
-  const opts = parseArgs(process.argv.slice(2));
+  const raw = process.argv.slice(2);
+  if (raw[0] === 'diff') return cmdDiff(raw.slice(1));
+  if (raw[0] === 'badge') return cmdBadge(raw.slice(1));
+
+  const opts = parseArgs(raw);
   if (opts.help) {
     process.stdout.write(HELP + '\n');
     return;
@@ -227,6 +236,71 @@ function openBrowser(url) {
   } catch {
     /* best-effort: never block startup on browser launch */
   }
+}
+
+// ---------------------------------------------------------------------------
+// Subcommands: diff (branch vs branch) and badge (README SVG)
+// ---------------------------------------------------------------------------
+/** Analyse a working directory directly. */
+function analyseDir(dir) {
+  const files = collectFiles(dir);
+  return analyse(dir, files);
+}
+
+/** Analyse a git ref by checking it out into a throwaway worktree. */
+function analyseRef(root, ref) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-diff-'));
+  try {
+    execFileSync('git', ['worktree', 'add', '--detach', '--quiet', tmp, ref], { cwd: root, stdio: 'pipe' });
+  } catch (e) {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    throw new Error(`git could not check out "${ref}" (is this a git repo, and is the ref valid?)`);
+  }
+  try {
+    return analyseDir(tmp);
+  } finally {
+    try { execFileSync('git', ['worktree', 'remove', '--force', tmp], { cwd: root, stdio: 'pipe' }); } catch {}
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function cmdDiff(args) {
+  const pos = args.filter((a) => !a.startsWith('-'));
+  const base = pos[0];
+  const head = pos[1]; // optional — defaults to the working tree
+  if (!base) {
+    console.error('Usage: livearch diff <base-ref> [head-ref]');
+    console.error('  e.g. livearch diff main            (compare main → working tree)');
+    console.error('       livearch diff main feature/x  (compare two refs)');
+    process.exit(1);
+  }
+  const root = process.cwd();
+  try {
+    const baseArch = analyseRef(root, base);
+    const headArch = head ? analyseRef(root, head) : analyseDir(root);
+    const diff = diffArch(baseArch, headArch);
+    console.log(formatDiff(diff, base, head || 'working tree'));
+  } catch (e) {
+    console.error('✗ ' + e.message);
+    process.exit(1);
+  }
+}
+
+function cmdBadge(args) {
+  let output = 'docs/architecture-badge.svg';
+  const pos = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--output') output = args[++i];
+    else if (!args[i].startsWith('-')) pos.push(args[i]);
+  }
+  const root = pos[0] ? path.resolve(pos[0]) : process.cwd();
+  const arch = analyseDir(root);
+  const svg = badgeSvg(arch);
+  const outPath = path.resolve(root, output);
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, svg);
+  console.log(`⬡  Wrote badge: ${output}  (${arch.nodes.length} nodes)`);
+  console.log(`   Embed in your README:  ${badgeMarkdown(output)}`);
 }
 
 /** Run an AI review and print the suggestions. Returns an exit code. */

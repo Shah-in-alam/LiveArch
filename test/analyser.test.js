@@ -297,6 +297,35 @@ test('AI reviewer errors clearly without an API key', async () => {
   }
 });
 
+test('diffArch reports added/removed nodes and edges', () => {
+  const { diffArch, formatDiff } = require('../lib/diff');
+  const base = {
+    name: 'app',
+    nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+    edges: [{ from: 'a', to: 'b', label: 'x' }],
+  };
+  const head = {
+    name: 'app',
+    nodes: [{ id: 'a', label: 'A' }, { id: 'c', label: 'C' }],
+    edges: [{ from: 'a', to: 'c', label: 'y' }],
+  };
+  const d = diffArch(base, head);
+  assert.deepEqual(d.addedNodes.map((n) => n.id), ['c']);
+  assert.deepEqual(d.removedNodes.map((n) => n.id), ['b']);
+  assert.equal(d.addedEdges.length, 1);
+  assert.equal(d.removedEdges.length, 1);
+  assert.match(formatDiff(d, 'main', 'feature'), /Added nodes/);
+});
+
+test('badgeSvg produces a valid SVG with the node count', () => {
+  const { badgeSvg, badgeMarkdown } = require('../lib/badge');
+  const svg = badgeSvg({ nodes: [1, 2, 3] });
+  assert.match(svg, /^<svg /);
+  assert.match(svg, /3 nodes/);
+  assert.match(svg, /architecture/);
+  assert.match(badgeMarkdown('docs/b.svg'), /!\[Architecture\]\(docs\/b\.svg\)/);
+});
+
 test('template.render produces self-contained HTML with baked-in ARCH', () => {
   const { root, files } = makeFixture();
   const arch = analyse(root, files);
