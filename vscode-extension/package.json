@@ -1,0 +1,49 @@
+{
+  "name": "livearch-vscode",
+  "displayName": "LiveArch",
+  "description": "Live, auto-updating architecture diagram for your project — inside VS Code.",
+  "version": "0.1.0",
+  "publisher": "shah-in-alam",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["architecture", "diagram", "visualization", "developer-tools"],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "livearch.openDiagram",
+        "title": "LiveArch: Open Diagram",
+        "category": "LiveArch"
+      },
+      {
+        "command": "livearch.refresh",
+        "title": "LiveArch: Refresh",
+        "category": "LiveArch"
+      }
+    ],
+    "configuration": {
+      "title": "LiveArch",
+      "properties": {
+        "livearch.debounce": {
+          "type": "number",
+          "default": 350,
+          "description": "Debounce (ms) before re-analysing after a file change."
+        },
+        "livearch.maxFiles": {
+          "type": "number",
+          "default": 5000,
+          "description": "Maximum number of files to scan in the workspace."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "node ./bundle-lib.js"
+  }
+}
