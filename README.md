@@ -277,10 +277,10 @@ Python, Go, and other language support is planned — see [Roadmap](#roadmap).
 - [ ] One-click fixes / auto-generated GitHub issues
 
 ### v1.0 — Team Features (Pro)
-- [ ] Shareable public diagram URL
-- [ ] Team collaboration — multiple devs see same live diagram
-- [ ] Architecture diff — compare two branches
-- [ ] Embed diagram in README as live badge
+- [x] **Architecture diff** — `livearch diff <base-ref> [head-ref]` compares two git refs
+- [x] **README badge** — `livearch badge` writes an SVG architecture badge you can embed
+- [ ] Shareable public diagram URL *(needs a hosted backend)*
+- [ ] Team collaboration — multiple devs see the same live diagram *(needs a hosted backend)*
 
 ---
 
