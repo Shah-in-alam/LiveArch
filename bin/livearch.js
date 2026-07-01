@@ -45,6 +45,7 @@ function parseArgs(argv) {
     else if (a === '--config') opts.config = true;
     else if (a === '--review') opts.review = true;
     else if (a === '--demo') opts.demo = true;
+    else if (a === '--host') opts.host = argv[++i];
     else if (!a.startsWith('-')) rest.push(a);
   }
   if (rest[0]) opts.path = path.resolve(rest[0]);
@@ -63,6 +64,7 @@ Arguments:
 
 Options:
   --port <number>       WebSocket/HTTP port (default: 7842)
+  --host <addr>         Bind address (default: all interfaces, for team sharing)
   --output <filename>   Output filename (default: .visualarch.html)
   --ignore <glob>       Additional ignore pattern (repeatable)
   --no-open             Don't print the open hint
@@ -197,10 +199,13 @@ function main() {
     .on('ready', () => {
       ready = true;
       const arch = buildOnce();
-      server.listen(opts.port, () => {
+      const done = () => {
         printBanner(opts, WATCH_PATH, arch, trackedFiles.size);
         if (opts.open) openBrowser(`http://localhost:${opts.port}`);
-      });
+      };
+      // Default: bind all interfaces so teammates on your network can view it.
+      if (opts.host) server.listen(opts.port, opts.host, done);
+      else server.listen(opts.port, done);
     });
 
   // --- Graceful shutdown -----------------------------------------------
@@ -369,13 +374,26 @@ function collectFiles(root, extraIgnore = [], depth = 6, prefix = '', out = []) 
   return out;
 }
 
+/** First non-internal IPv4 address, for network sharing. */
+function lanIp() {
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const i of ifaces[name] || []) {
+      if (i.family === 'IPv4' && !i.internal) return i.address;
+    }
+  }
+  return null;
+}
+
 function printBanner(opts, watchPath, arch, fileCount) {
   const line = '─'.repeat(45);
   console.log(`\n⬡  LiveArch`);
   console.log(line);
   console.log(`📁 Watching  : ${watchPath}`);
   console.log(`📄 Diagram   : ${opts.output}  ← open this in your browser`);
-  console.log(`🌐 Live URL  : http://localhost:${opts.port}`);
+  console.log(`🌐 Local URL : http://localhost:${opts.port}`);
+  const ip = (!opts.host || opts.host === '0.0.0.0' || opts.host === '::') ? lanIp() : null;
+  if (ip) console.log(`👥 Network   : http://${ip}:${opts.port}  ← share this with your team (same network)`);
   console.log(line);
   console.log(`✓ ${arch.nodes.length} nodes detected, ${fileCount} files watched\n`);
   console.log(opts.open
