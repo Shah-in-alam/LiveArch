@@ -262,10 +262,12 @@ Python, Go, and other language support is planned — see [Roadmap](#roadmap).
 - [x] `--no-watch` CI mode and auto-open browser
 
 ### v0.3 — VS Code Extension
-- [ ] Install from VS Code marketplace
-- [ ] Auto-starts when you open a project
-- [ ] Diagram opens in split panel inside VS Code
-- [ ] No terminal required
+- [x] Extension implemented (`vscode-extension/`) — reuses the same core engine
+- [x] Auto-starts when you open a project (status bar shows node count)
+- [x] Diagram opens in a split panel inside VS Code
+- [x] No terminal required
+- [x] Double-click a node to open its file in the editor
+- [ ] Publish to the VS Code marketplace
 
 ### v0.4 — AI Layer (Pro)
 - [ ] "Your Shop component is doing too much — split it"
