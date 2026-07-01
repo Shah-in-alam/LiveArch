@@ -406,6 +406,7 @@ Then embed it:
 ```
 Options:
   --port <number>       WebSocket/HTTP port (default: 7842)
+  --host <addr>         Bind address (default: all interfaces, for team sharing)
   --output <filename>   Output filename (default: .visualarch.html)
   --ignore <glob>       Additional ignore pattern (repeatable)
   --no-open             Don't auto-open the browser
@@ -416,6 +417,36 @@ Options:
   --review              Print AI architecture suggestions and exit
   --help                Show this help
 ```
+
+---
+
+## Sharing with your team
+
+LiveArch's watcher already pushes live updates to **every** connected browser — so multiple people can watch the same diagram update in real time. There are three ways to share, from simplest to most live:
+
+**1. Commit the diagram (works on clone, offline)**
+```bash
+livearch --no-watch
+git add .visualarch.html && git commit -m "architecture snapshot"
+```
+Teammates open `.visualarch.html` after cloning — no install needed. Great for onboarding. Pair it with a badge: `livearch badge`.
+
+**2. Same network — live**
+Run the watcher and share the **Network URL** it prints:
+```
+👥 Network   : http://192.168.1.20:7842  ← share this with your team
+```
+Anyone on the same Wi-Fi/LAN who opens that URL sees the diagram update **live** as you code. (The page connects to whichever host served it, so the live link follows the URL.)
+
+**3. Anywhere — live, via a tunnel**
+Expose your local port with a tunnel and share the public URL:
+```bash
+livearch                       # in one terminal
+ngrok http 7842                # or: cloudflared tunnel --url http://localhost:7842
+```
+Remote teammates open the tunnel URL and get real-time updates (works over HTTPS too).
+
+> A permanent hosted URL and accounts/access-control are a separate roadmap item (they need a backend service). The three options above cover live team viewing without any hosted infrastructure.
 
 ---
 
