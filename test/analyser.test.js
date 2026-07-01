@@ -372,6 +372,33 @@ test('badgeSvg produces a valid SVG with the node count', () => {
   assert.match(badgeMarkdown('docs/b.svg'), /!\[Architecture\]\(docs\/b\.svg\)/);
 });
 
+test('hosted store round-trips a snapshot and renders a snapshot viewer', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-store-'));
+  process.env.LIVEARCH_DATA_DIR = dir;
+  // require after setting the env so the store picks up the temp dir
+  delete require.cache[require.resolve('../server/lib/store')];
+  const store = require('../server/lib/store');
+  const { renderViewer } = require('../server/lib/render');
+
+  const { root, files } = makeFixture();
+  const arch = analyse(root, files);
+
+  const saved = store.saveSnapshot('me', 'my-repo', arch);
+  assert.deepEqual(saved, { handle: 'me', slug: 'my-repo' });
+  const snap = store.getSnapshot('me', 'my-repo');
+  assert.equal(snap.arch.name, arch.name);
+  assert.ok(snap.updatedAt > 0);
+  assert.equal(store.getSnapshot('nope', 'nope'), null);
+
+  // path-traversal / invalid segments rejected
+  assert.throws(() => store.saveSnapshot('../evil', 'x', arch));
+
+  const html = renderViewer(snap);
+  assert.match(html, /<!DOCTYPE html>/);
+  assert.match(html, /const SNAPSHOT = true/);
+  delete process.env.LIVEARCH_DATA_DIR;
+});
+
 test('template.render produces self-contained HTML with baked-in ARCH', () => {
   const { root, files } = makeFixture();
   const arch = analyse(root, files);
