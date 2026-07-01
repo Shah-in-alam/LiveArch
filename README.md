@@ -342,28 +342,75 @@ npx livearch
 
 ---
 
-## Options
+## Commands
+
+LiveArch has one default command (watch) plus a few subcommands:
+
+| Command | What it does |
+|---------|--------------|
+| `livearch [path]` | Watch a project, serve the live diagram, and auto-open it in your browser |
+| `livearch [path] --no-watch` | Generate `.visualarch.html` once and exit (CI mode) |
+| `livearch [path] --review` | Print AI architecture suggestions and exit (needs `ANTHROPIC_API_KEY`) |
+| `livearch diff <base-ref> [head-ref]` | Compare the architecture between two git refs |
+| `livearch badge [path]` | Write an SVG architecture badge you can embed in your README |
+| `livearch --help` | Show help |
+
+### Watch (default)
 
 ```bash
-livearch [path] [options]
-
-Arguments:
-  path                  Path to watch (default: current directory)
-
-Options:
-  --port <number>       WebSocket port (default: 7842)
-  --output <filename>   Output filename (default: .visualarch.html)
-  --ignore <glob>       Additional ignore patterns
-  --no-open             Don't auto-open browser
-  --help                Show help
-```
-
-Examples:
-```bash
-livearch                          # watch current directory
+livearch                          # watch current directory, opens the diagram
 livearch ./frontend               # watch a subdirectory
 livearch --port 8000              # use a different port
 livearch --output arch.html       # custom output filename
+livearch --no-open                # don't auto-open the browser
+livearch --no-watch               # generate once and exit (CI)
+```
+
+### AI review (Pro)
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+livearch --review                 # print architecture suggestions and exit
+```
+
+You can also click **🧠 AI Review** in the diagram, or the VS Code extension. Override the model with `LIVEARCH_MODEL` (default `claude-opus-4-8`).
+
+### Architecture diff
+
+```bash
+livearch diff main                # compare main → your working tree
+livearch diff main feature/auth   # compare two branches/refs
+```
+
+Prints added/removed nodes and connections — great for reviewing what a branch changes structurally.
+
+### README badge
+
+```bash
+livearch badge                              # writes docs/architecture-badge.svg
+livearch badge . --output docs/arch.svg     # custom path
+```
+
+Then embed it:
+
+```markdown
+![Architecture](docs/architecture-badge.svg)
+```
+
+## Options
+
+```
+Options:
+  --port <number>       WebSocket/HTTP port (default: 7842)
+  --output <filename>   Output filename (default: .visualarch.html)
+  --ignore <glob>       Additional ignore pattern (repeatable)
+  --no-open             Don't auto-open the browser
+  --no-watch            Generate the diagram once and exit (CI mode)
+  --routes              Include individual HTTP endpoints as nodes (off by default)
+  --tests               Include test files as nodes (off by default)
+  --config              Include config files (.env, …) as nodes (off by default)
+  --review              Print AI architecture suggestions and exit
+  --help                Show this help
 ```
 
 ---
