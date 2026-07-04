@@ -248,6 +248,54 @@ test('detects Python tech stack + classifies .py files', () => {
   assert.ok(!arch.nodes.some((n) => n.file && n.file.endsWith('__init__.py')), '__init__.py skipped');
 });
 
+test('detects Go tech stack + classifies .go files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-go-'));
+  const w = (rel, c) => { const a = path.join(root, rel); fs.mkdirSync(path.dirname(a), { recursive: true }); fs.writeFileSync(a, c); return a; };
+  const files = [
+    w('go.mod', 'module example.com/app\ngo 1.22\nrequire (\n github.com/gin-gonic/gin v1.9.1\n gorm.io/gorm v1.25.0\n github.com/redis/go-redis/v9 v9.0.0\n)'),
+    w('cmd/server/main.go', 'package main\nfunc main(){}'),
+    w('handlers/user.go', 'package handlers'),
+    w('models/user.go', 'package models'),
+    w('user_test.go', 'package main'),
+  ];
+  const arch = analyse(root, files);
+  const ids = arch.nodes.map((n) => n.id);
+  assert.ok(ids.includes('dep-gin'), 'Gin detected');
+  assert.ok(ids.includes('dep-gorm'), 'GORM detected');
+  assert.ok(ids.includes('dep-redis'), 'Redis detected');
+  assert.ok(ids.includes('dep-go'), 'Go language node');
+
+  const byFile = (suffix) => arch.nodes.find((n) => n.file && n.file.endsWith(suffix));
+  assert.equal(byFile('cmd/server/main.go').type, 'entry', 'main.go under cmd/ is entry');
+  assert.equal(byFile('handlers/user.go').type, 'route', 'handlers/*.go is route');
+  assert.equal(byFile('models/user.go').type, 'model', 'models/*.go is model');
+  assert.ok(!arch.nodes.some((n) => n.file && n.file.endsWith('user_test.go')), '_test.go excluded by default');
+});
+
+test('detects Rust tech stack + classifies .rs files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-rs-'));
+  const w = (rel, c) => { const a = path.join(root, rel); fs.mkdirSync(path.dirname(a), { recursive: true }); fs.writeFileSync(a, c); return a; };
+  const files = [
+    w('Cargo.toml', '[package]\nname = "app"\n[dependencies]\naxum = "0.7"\ntokio = { version = "1", features = ["full"] }\nsqlx = "0.7"\nserde = "1"'),
+    w('src/main.rs', 'fn main() {}'),
+    w('src/models/user.rs', 'pub struct User;'),
+    w('src/handlers.rs', 'pub fn handle() {}'),
+    w('tests/it.rs', '#[test] fn t() {}'),
+  ];
+  const arch = analyse(root, files);
+  const ids = arch.nodes.map((n) => n.id);
+  assert.ok(ids.includes('dep-axum'), 'Axum detected');
+  assert.ok(ids.includes('dep-sqlx'), 'SQLx detected');
+  assert.ok(ids.includes('dep-tokio'), 'Tokio detected');
+  assert.ok(ids.includes('dep-rust'), 'Rust language node');
+
+  const byFile = (suffix) => arch.nodes.find((n) => n.file && n.file.endsWith(suffix));
+  assert.equal(byFile('src/main.rs').type, 'entry', 'main.rs is entry');
+  assert.equal(byFile('src/models/user.rs').type, 'model', 'models/*.rs is model');
+  assert.equal(byFile('src/handlers.rs').type, 'route', 'handlers.rs is route');
+  assert.ok(!arch.nodes.some((n) => n.file && n.file.endsWith('tests/it.rs')), 'tests/*.rs excluded by default');
+});
+
 test('AI reviewer builds a prompt and parses suggestions (mocked client)', async () => {
   const { review } = require('../lib/ai/reviewer');
   const { buildUserPrompt, summariseArch } = require('../lib/ai/prompts');
