@@ -451,3 +451,16 @@ test('template.render produces self-contained HTML with baked-in ARCH', () => {
   assert.match(html, /ws:\/\/localhost/);
   assert.ok(html.includes('fixture-app'), 'project name baked in');
 });
+
+test('template.render includes the diagram export (PNG/SVG) controls', () => {
+  const { root, files } = makeFixture();
+  const arch = analyse(root, files);
+  const html = template.render(arch, { port: 7842 });
+  assert.ok(html.includes('id="btnExport"'), 'export button present');
+  assert.ok(html.includes('data-fmt="png"'), 'PNG option present');
+  assert.ok(html.includes('data-fmt="svg"'), 'SVG option present');
+  assert.match(html, /function buildExportSvg/);
+  assert.match(html, /XMLSerializer/);
+  assert.match(html, /function exportPng/);
+  assert.match(html, /function exportSvg/);
+});
