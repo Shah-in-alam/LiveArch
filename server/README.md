@@ -1,9 +1,10 @@
-# ⬡ LiveArch — hosted server (Phase 1 MVP)
+# ⬡ LiveArch — hosted server (Phases 1–3)
 
 A minimal Next.js app that gives your architecture diagram a **permanent,
-shareable URL**. Implements Phase 1 of [`docs/BACKEND-DESIGN.md`](../docs/BACKEND-DESIGN.md):
-store the last snapshot the CLI pushes and serve it. (Live sync + accounts are
-Phase 2/3.)
+shareable URL**, **live sync** to viewers (SSE), and **accounts** with scoped
+tokens, private projects, and snapshot history. Implements Phases 1–3 of
+[`docs/BACKEND-DESIGN.md`](../docs/BACKEND-DESIGN.md), minus the Postgres
+datastore and team membership (still filesystem-backed).
 
 ## Run it
 
@@ -27,32 +28,47 @@ node /path/to/LiveArch/bin/livearch.js share me/my-repo --server http://localhos
 # → open http://localhost:3000/u/me/my-repo
 ```
 
-### Private projects & ownership
+### Accounts & handle ownership (Phase 3)
 
-Pass a `--token` to claim ownership of a project; only that token can push to it
-afterward. Add `--private` to make it viewable only with the token:
+Create an account and claim a handle; afterwards **only your account** can
+publish under it:
 
 ```bash
-livearch push me/secret-app --token <your-secret> --private --server http://localhost:3000
-# → viewers must use  http://localhost:3000/u/me/secret-app?token=<your-secret>
+livearch login --handle me --email me@example.com --server http://localhost:3000
+livearch whoami --server http://localhost:3000
+livearch push me/app --server http://localhost:3000     # uses your saved token
+livearch push me/app --private --server http://localhost:3000   # account-locked
 ```
 
-- **First push with a token** creates an owned project. **First push with no
-  token** creates an open project (anyone can push) — handy for local dev.
-- Public projects are viewable by anyone; private ones require the owner token.
-- Tokens are stored **hashed** (SHA-256); the raw token is never persisted.
+- `login` calls `POST /api/auth/register`, which returns a **token shown once**
+  and saved to `~/.livearch/config.json` (per server). `push`/`share` send it as
+  `Authorization: Bearer …`.
+- A **claimed handle** is owned by one account; pushes with another account's
+  token are rejected (403). Private projects are viewable only by the owning
+  account's token (`?token=…`).
+- Tokens are stored **hashed** (SHA-256), are revocable, and track `last_used`.
+- **Legacy / anonymous** still works: an unclaimed handle falls back to the
+  per-project `--token` model (or open, no token) — handy for quick local dev.
 
-This is the access-control layer of Phase 3. Full user **accounts** (OAuth /
-Sign in with GitHub) and a persistent multi-user datastore are the remaining
-Phase-3 work — see [`../docs/BACKEND-DESIGN.md`](../docs/BACKEND-DESIGN.md).
+### Sign in with GitHub (optional)
+
+Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (OAuth app callback:
+`<origin>/api/auth/github/callback`) to enable **Sign in with GitHub** at
+`/api/auth/github`. It creates/links an account and shows a token to paste into
+`livearch login --token …`. When unset, the endpoint returns `501` with setup
+instructions; the register/token flow above works without it.
 
 ## Endpoints
 
 | Route | Purpose |
 |-------|---------|
-| `POST /api/ingest` | CLI pushes `{ handle, slug, arch, token }` — stores the latest snapshot and fans it out |
+| `POST /api/ingest` | CLI pushes `{ handle, slug, arch }` with a `Bearer` token — stores the latest snapshot, appends history, and fans it out |
 | `GET /u/<handle>/<slug>` | The permanent viewer URL — renders the last snapshot and subscribes to live updates |
 | `GET /api/stream/<handle>/<slug>` | Server-Sent Events stream of live updates for viewers |
+| `POST /api/auth/register` | Create an account, claim a handle, return a token |
+| `GET /api/auth/whoami` | Resolve the bearer token to its account |
+| `GET/POST/DELETE /api/auth/tokens` | List / issue / revoke this account's tokens |
+| `GET /api/auth/github[/callback]` | Optional GitHub OAuth (env-gated) |
 | `GET /` | Landing page |
 
 ## Live sync
@@ -65,9 +81,11 @@ Redis pub/sub (see the design doc).
 
 ## Storage
 
-Phase 1 uses a filesystem JSON store under `server/.data/` (see `lib/store.js`).
-For production on Vercel, swap `saveSnapshot`/`getSnapshot` for Neon Postgres or
-Vercel Blob — nothing else changes.
+A filesystem JSON store under `server/.data/` (see `lib/store.js`,
+`lib/accounts.js`): snapshots + `.history.json` per project, and `_accounts/`,
+`_tokens/`, `_handles/` for accounts. The shape mirrors the Postgres data model
+in the design doc, so swapping `store.js`/`accounts.js` for Neon Postgres is a
+drop-in — the routes and CLI don't change.
 
 ## Deploy (later)
 

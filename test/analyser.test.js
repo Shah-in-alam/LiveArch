@@ -477,6 +477,78 @@ test('project access control: ownership + private visibility', () => {
   delete process.env.LIVEARCH_DATA_DIR;
 });
 
+// Fresh-require the hosted modules against a temp data dir (they cache DATA_DIR
+// at require time, so cache must be cleared after setting the env).
+function freshHosted(prefix) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  process.env.LIVEARCH_DATA_DIR = dir;
+  for (const m of ['../server/lib/store', '../server/lib/accounts', '../server/lib/projects']) {
+    delete require.cache[require.resolve(m)];
+  }
+  return {
+    store: require('../server/lib/store'),
+    accounts: require('../server/lib/accounts'),
+    projects: require('../server/lib/projects'),
+  };
+}
+
+test('accounts: register, tokens, and handle ownership', () => {
+  const { accounts, projects } = freshHosted('livearch-acct-');
+
+  const { account, token } = accounts.createAccount({ handle: 'alice', email: 'a@b.com' });
+  assert.equal(account.handle, 'alice');
+  assert.ok(token.startsWith('la_'), 'token is a secret string');
+  assert.equal(accounts.resolveToken(token).id, account.id, 'token resolves to account');
+  assert.equal(accounts.getHandleOwner('alice'), account.id, 'handle claimed');
+
+  // validation
+  assert.throws(() => accounts.createAccount({ handle: 'alice' }), (e) => e.code === 'HANDLE_TAKEN');
+  assert.throws(() => accounts.createAccount({ handle: 'Bad Handle!' }), (e) => e.code === 'BAD_HANDLE');
+  assert.throws(() => accounts.createAccount({ handle: 'carol', email: 'nope' }), (e) => e.code === 'BAD_EMAIL');
+
+  // account owns every project under its handle
+  const w = projects.authorizeWrite('alice', 'app', token);
+  assert.equal(w.created, true);
+  assert.equal(w.meta.ownerAccountId, account.id);
+
+  // a different account cannot write under alice's handle
+  const bob = accounts.createAccount({ handle: 'bob' });
+  assert.throws(() => projects.authorizeWrite('alice', 'app', bob.token), (e) => e.code === 'FORBIDDEN');
+  assert.throws(() => projects.authorizeWrite('alice', 'other', bob.token), (e) => e.code === 'FORBIDDEN');
+  assert.throws(() => projects.authorizeWrite('alice', 'app', ''), (e) => e.code === 'FORBIDDEN', 'anon rejected on owned handle');
+
+  // private account project: readable only by the owning account's token
+  projects.authorizeWrite('alice', 'app', token, { private: true });
+  assert.equal(projects.canRead('alice', 'app', ''), false);
+  assert.equal(projects.canRead('alice', 'app', bob.token), false);
+  assert.equal(projects.canRead('alice', 'app', token), true);
+
+  // token management: issue a second, then revoke it
+  const t2 = accounts.issueToken(account.id, 'ci');
+  assert.ok(accounts.listTokens(account.id).length >= 2);
+  assert.equal(accounts.resolveToken(t2).id, account.id);
+  const hash2 = accounts.hash(t2);
+  assert.equal(accounts.revokeToken(account.id, hash2), true);
+  assert.equal(accounts.resolveToken(t2), null, 'revoked token no longer resolves');
+  // cannot revoke another account's token
+  assert.equal(accounts.revokeToken(bob.account.id, accounts.hash(token)), false);
+
+  delete process.env.LIVEARCH_DATA_DIR;
+});
+
+test('snapshot history is newest-first and capped', () => {
+  const { store } = freshHosted('livearch-hist-');
+  for (let i = 0; i < store.HISTORY_MAX + 5; i++) {
+    store.appendHistory('me', 'app', { name: 'app', nodes: [{ id: 'n' + i }], edges: [] });
+  }
+  const hist = store.getHistory('me', 'app');
+  assert.equal(hist.length, store.HISTORY_MAX, 'capped at HISTORY_MAX');
+  assert.equal(hist[0].arch.nodes[0].id, 'n' + (store.HISTORY_MAX + 4), 'newest first');
+  assert.ok(hist[0].at >= hist[1].at, 'timestamps descending');
+  assert.deepEqual(store.getHistory('nobody', 'x'), []);
+  delete process.env.LIVEARCH_DATA_DIR;
+});
+
 test('pub/sub bus delivers published updates to subscribers', () => {
   const { publish, subscribe } = require('../server/lib/bus');
   const got = [];

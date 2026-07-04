@@ -47,4 +47,43 @@ function getSnapshot(handle, slug) {
   }
 }
 
-module.exports = { saveSnapshot, getSnapshot, DATA_DIR, safeSeg };
+const HISTORY_MAX = 20;
+
+function historyFile(handle, slug) {
+  const h = safeSeg(handle), s = safeSeg(slug);
+  if (!h || !s) return null;
+  return path.join(DATA_DIR, h, s + '.history.json');
+}
+
+/**
+ * Append a snapshot to the project's rolling history (newest first, capped at
+ * HISTORY_MAX). History powers server-side diff and "how architecture changed
+ * over time" (Phase 3). Best-effort — never throws into the write path.
+ */
+function appendHistory(handle, slug, arch) {
+  const f = historyFile(handle, slug);
+  if (!f) return;
+  let list = [];
+  try { list = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* new / corrupt */ }
+  if (!Array.isArray(list)) list = [];
+  list.unshift({ arch, at: Date.now() });
+  if (list.length > HISTORY_MAX) list.length = HISTORY_MAX;
+  try {
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, JSON.stringify(list));
+  } catch { /* best-effort */ }
+}
+
+/** Read the project's snapshot history (newest first), or []. */
+function getHistory(handle, slug) {
+  const f = historyFile(handle, slug);
+  if (!f) return [];
+  try {
+    const list = JSON.parse(fs.readFileSync(f, 'utf8'));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+module.exports = { saveSnapshot, getSnapshot, appendHistory, getHistory, HISTORY_MAX, DATA_DIR, safeSeg };

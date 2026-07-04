@@ -1,9 +1,15 @@
 # LiveArch — Hosted Backend Design (sketch)
 
-Status: **design only, not implemented.** This document sketches the backend
-that would deliver the remaining v1.0 "Team" features that a purely local tool
-can't: a **permanent shareable URL** (viewable when your laptop is off) and
+Status: **Phases 1–3 implemented** in [`server/`](../server/) (filesystem-backed);
+the Postgres datastore and team membership remain. This document sketches the
+backend that delivers the v1.0 "Team" features a purely local tool can't: a
+**permanent shareable URL** (viewable when your laptop is off) and
 **cross-network live team viewing with accounts and access control**.
+
+Implemented so far: permanent URL + SSR viewer (Phase 1), live sync via SSE
+(Phase 2), and accounts with scoped tokens, handle ownership, private projects,
+and snapshot history (most of Phase 3). GitHub OAuth is wired but env-gated.
+Remaining: swap the filesystem store for Neon Postgres, and team membership.
 
 Everything else in LiveArch stays local and free. This backend is the Pro/Team
 layer.
@@ -172,13 +178,14 @@ livearch push                  # one-shot upload (CI: publish the current archit
 
 ## 11. Phased rollout
 
-1. **Phase 1 — Permanent URL (no realtime).** `livearch push`/`share` → SSR
-   viewer of the latest snapshot + live badge. Solves "viewable when my laptop is
-   off." Smallest surface, immediate value.
-2. **Phase 2 — Live sync.** Add pub/sub + `/api/stream` (SSE). Viewers update in
-   real time across networks. Solves the true team-sync feature.
-3. **Phase 3 — Accounts & teams.** Private projects, membership, snapshot
-   history, server-side branch diff, org billing.
+1. **Phase 1 — Permanent URL (no realtime).** ✅ `livearch push`/`share` → SSR
+   viewer of the latest snapshot. Solves "viewable when my laptop is off."
+2. **Phase 2 — Live sync.** ✅ pub/sub + `/api/stream` (SSE). Viewers update in
+   real time across networks.
+3. **Phase 3 — Accounts & teams.** ✅ (mostly) accounts, scoped tokens, handle
+   ownership, private projects, snapshot history, and env-gated GitHub OAuth.
+   Remaining: a persistent multi-user datastore (Neon Postgres), team
+   membership/roles, server-side branch diff, and org billing.
 
 MVP is Phase 1: it's mostly the existing analyser/template plus one POST endpoint
 and one SSR page — a few days of work, no realtime complexity.

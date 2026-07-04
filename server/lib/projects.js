@@ -3,23 +3,24 @@
 /**
  * projects.js — project ownership, visibility, and access control (Phase 3).
  *
- * A project's metadata (owner + visibility) lives next to its snapshot as
- * `<slug>.meta.json`. Ownership is proved by a token whose SHA-256 hash is
- * stored (the raw token is never persisted).
+ * Two ownership models, checked in order:
  *
- * Policy:
- *  - First write with a token → creates the project, that token is the owner
- *    (visibility per `--private`, default public).
- *  - First write with NO token → open project (no owner), anyone can write —
- *    convenient for local dev.
- *  - Later writes to an owned project require the owner token, else 403.
- *  - Reads: public → anyone; private → owner token only.
+ *  1. Account handle ownership (accounts.js). Once an account claims a `handle`
+ *     (via `livearch login`), only that account's tokens may write any project
+ *     under it. Private projects are readable only by the owning account.
+ *
+ *  2. Legacy per-project token (kept for anonymous local dev and back-compat):
+ *     a project's `<slug>.meta.json` records the SHA-256 hash of the first
+ *     token that wrote it; later writes need the same token. No token → open.
+ *
+ * The raw token is never persisted — only its hash.
  */
 
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { DATA_DIR, safeSeg } = require('./store');
+const accounts = require('./accounts');
 
 function metaFile(handle, slug) {
   const h = safeSeg(handle), s = safeSeg(slug);
@@ -46,6 +47,26 @@ function saveMeta(handle, slug, meta) {
 
 /** Authorize (and record) a write. Throws Error{code:'FORBIDDEN'} if not owner. */
 function authorizeWrite(handle, slug, token, opts = {}) {
+  const existed = !!getMeta(handle, slug);
+  const handleOwner = accounts.getHandleOwner(handle); // account id, or null
+
+  // 1. Account handle ownership takes precedence once a handle is claimed.
+  if (handleOwner) {
+    const account = accounts.resolveToken(token);
+    if (!account || account.id !== handleOwner) {
+      const e = new Error('this handle belongs to another account');
+      e.code = 'FORBIDDEN';
+      throw e;
+    }
+    const meta = getMeta(handle, slug) || { createdAt: Date.now() };
+    meta.ownerAccountId = handleOwner;
+    if (opts.private !== undefined) meta.visibility = opts.private ? 'private' : 'public';
+    else if (!meta.visibility) meta.visibility = 'public';
+    saveMeta(handle, slug, meta);
+    return { created: !existed, meta, account };
+  }
+
+  // 2. Legacy per-project token model (anonymous dev / unclaimed handles).
   let meta = getMeta(handle, slug);
   if (!meta) {
     meta = { ownerHash: hash(token), visibility: opts.private ? 'private' : 'public', createdAt: Date.now() };
@@ -67,6 +88,12 @@ function canRead(handle, slug, token) {
   const meta = getMeta(handle, slug);
   if (!meta) return true;                 // no metadata → treat as public/open
   if (meta.visibility === 'public') return true;
+  // private: account-owned projects are readable by the owning account;
+  // legacy projects by the matching owner-token hash.
+  if (meta.ownerAccountId) {
+    const account = accounts.resolveToken(token);
+    return !!(account && account.id === meta.ownerAccountId);
+  }
   return !!(meta.ownerHash && meta.ownerHash === hash(token));
 }
 
