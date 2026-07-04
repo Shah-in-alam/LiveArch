@@ -289,7 +289,8 @@ More languages are planned — see [Roadmap](#roadmap).
 - [x] **README badge** — `livearch badge` writes an SVG architecture badge you can embed
 - [x] **Shareable public diagram URL** — self-host the [`server/`](server/) backend for a permanent URL (`livearch push`/`share`)
 - [x] **Team collaboration** — multiple devs see the same live diagram, synced live via SSE (`livearch share`)
-- [ ] Full hosted SaaS — OAuth accounts + a persistent multi-user datastore (currently self-host + filesystem store)
+- [x] **Accounts & scoped tokens** — `livearch login` claims a handle; only that account can publish under it, with private projects and snapshot history
+- [ ] Managed SaaS — GitHub OAuth is wired but env-gated; a persistent multi-user datastore (Neon Postgres) and team membership are the remaining hosted work
 
 ---
 
@@ -362,6 +363,10 @@ LiveArch has one default command (watch) plus a few subcommands:
 | `livearch [path] --review` | Print AI architecture suggestions and exit (needs `ANTHROPIC_API_KEY`) |
 | `livearch diff <base-ref> [head-ref]` | Compare the architecture between two git refs |
 | `livearch badge [path]` | Write an SVG architecture badge you can embed in your README |
+| `livearch login --handle <name>` | Create a hosted account, claim `<name>`, and save a token (`--server <url>`) |
+| `livearch whoami` / `livearch logout` | Show / clear the saved hosted login |
+| `livearch push <handle>/<repo>` | Publish the architecture to a hosted server (permanent URL) |
+| `livearch share <handle>/<repo>` | Watch + publish on every save (viewers update live via SSE) |
 | `livearch --help` | Show help |
 
 ### Watch (default)
@@ -461,16 +466,22 @@ A minimal Next.js server in [`server/`](server/) gives your diagram a permanent,
 ```bash
 cd server && npm install && npm run dev          # http://localhost:3000
 
-# publish once:
-livearch push <handle>/<repo> --server http://localhost:3000
-# …or keep it live — push on every save (viewers update in real time via SSE):
-livearch share <handle>/<repo> --server http://localhost:3000
-# → everyone opens http://localhost:3000/u/<handle>/<repo>
+# 1. create an account and claim your handle (token saved to ~/.livearch):
+livearch login --handle <you> --server http://localhost:3000
+livearch whoami --server http://localhost:3000    # confirm who you are
 
-# private, owner-locked (viewers need the token):
-livearch share <handle>/<repo> --token <secret> --private --server http://localhost:3000
+# 2. publish once (uses your saved login — no --token needed):
+livearch push <you>/<repo> --server http://localhost:3000
+# …or keep it live — push on every save (viewers update in real time via SSE):
+livearch share <you>/<repo> --server http://localhost:3000
+# → everyone opens http://localhost:3000/u/<you>/<repo>
+
+# private, account-locked (viewers need a token):
+livearch share <you>/<repo> --private --server http://localhost:3000
 ```
-This implements Phases 1–2 and the access-control part of Phase 3 of [`docs/BACKEND-DESIGN.md`](docs/BACKEND-DESIGN.md): permanent URL, live sync (SSE), and owner-locked private projects. Full OAuth accounts and a persistent multi-user datastore are the remaining hosted work.
+Once you claim a handle with `login`, **only your account can publish under it** — pushes with another account's token are rejected (403). Each push also appends to a rolling **snapshot history**. Prefer real GitHub sign-in? Set `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` and visit `/api/auth/github` — see [`server/README.md`](server/README.md).
+
+This implements Phases 1–2 and most of Phase 3 of [`docs/BACKEND-DESIGN.md`](docs/BACKEND-DESIGN.md): permanent URL, live sync (SSE), accounts with scoped tokens, private projects, and snapshot history. A persistent multi-user datastore (Postgres) and team membership are the remaining hosted work.
 
 ---
 

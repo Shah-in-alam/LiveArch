@@ -58,6 +58,7 @@ const HELP = `
 Usage:  livearch [path] [options]
         livearch diff <base-ref> [head-ref]     Compare architecture between two git refs
         livearch badge [path] [--output file]   Write an SVG architecture badge for your README
+        livearch login --handle <name>          Create a hosted account + save a token (also: whoami, logout)
         livearch push <handle>/<repo>           Publish the diagram to a hosted server (permanent URL)
         livearch share <handle>/<repo>          Watch + push on every save (hosted viewers update live)
 
@@ -88,6 +89,9 @@ function main() {
   if (raw[0] === 'badge') return cmdBadge(raw.slice(1));
   if (raw[0] === 'push') return cmdPush(raw.slice(1));
   if (raw[0] === 'share') return cmdShare(raw.slice(1));
+  if (raw[0] === 'login') return cmdLogin(raw.slice(1));
+  if (raw[0] === 'logout') return cmdLogout(raw.slice(1));
+  if (raw[0] === 'whoami') return cmdWhoami(raw.slice(1));
 
   const opts = parseArgs(raw);
   if (opts.help) {
@@ -346,7 +350,7 @@ function cmdBadge(args) {
 /** Publish the current architecture to a hosted LiveArch server (Phase 1). */
 async function cmdPush(args) {
   let server = (process.env.LIVEARCH_SERVER || 'http://localhost:3000').replace(/\/$/, '');
-  let token = process.env.LIVEARCH_INGEST_TOKEN || '';
+  let token = '';
   let dir = process.cwd();
   let isPrivate = false;
   const pos = [];
@@ -357,6 +361,7 @@ async function cmdPush(args) {
     else if (args[i] === '--private') isPrivate = true;
     else if (!args[i].startsWith('-')) pos.push(args[i]);
   }
+  token = resolveToken(server, token); // flag → env → stored login
   const target = pos[0];
   if (!target || !target.includes('/')) {
     console.error('Usage: livearch push <handle>/<repo> [--server <url>] [--token <t>] [--private]');
@@ -382,13 +387,122 @@ async function cmdPush(args) {
 
 /** POST an arch to a hosted server's ingest endpoint. Returns the parsed body. */
 async function ingest(server, handle, slug, arch, token, isPrivate) {
+  const headers = { 'content-type': 'application/json' };
+  if (token) headers['authorization'] = 'Bearer ' + token; // account token
   const res = await fetch(server + '/api/ingest', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify({ handle, slug, arch, token, private: !!isPrivate }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`${res.status}: ${data.error || 'push failed'}`);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Account login: token stored per-server in ~/.livearch/config.json.
+// ---------------------------------------------------------------------------
+function configPath() {
+  return path.join(os.homedir(), '.livearch', 'config.json');
+}
+function readConfig() {
+  try { return JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch { return { servers: {} }; }
+}
+function writeConfig(cfg) {
+  const p = configPath();
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+}
+/** Stored { handle, token } for a server, or {}. */
+function serverCreds(server) {
+  const cfg = readConfig();
+  return (cfg.servers && cfg.servers[server]) || {};
+}
+/** Resolve the token to use: explicit flag → env → stored login. */
+function resolveToken(server, explicit) {
+  return explicit || process.env.LIVEARCH_INGEST_TOKEN || serverCreds(server).token || '';
+}
+
+function parseServerFlag(args) {
+  let server = (process.env.LIVEARCH_SERVER || 'http://localhost:3000').replace(/\/$/, '');
+  for (let i = 0; i < args.length; i++) if (args[i] === '--server') server = args[++i].replace(/\/$/, '');
+  return server;
+}
+
+async function cmdLogin(args) {
+  const server = parseServerFlag(args);
+  let token = '', handle = '', email = '';
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--token') token = args[++i];
+    else if (args[i] === '--handle') handle = args[++i];
+    else if (args[i] === '--email') email = args[++i];
+    else if (args[i] === '--server') i++;
+  }
+  try {
+    if (token) {
+      // Verify an existing token.
+      const who = await apiGet(server, '/api/auth/whoami', token);
+      handle = who.handle;
+    } else if (handle) {
+      // Register a new account and claim the handle.
+      const res = await apiJson(server, 'POST', '/api/auth/register', { handle, email });
+      token = res.token;
+      handle = res.handle;
+    } else {
+      console.error('Usage: livearch login --handle <name> [--email <e>] [--server <url>]');
+      console.error('   or: livearch login --token <token> [--server <url>]   (reuse an existing token)');
+      process.exit(1);
+    }
+  } catch (e) {
+    console.error(`✗ login failed: ${e.message}`);
+    process.exit(1);
+  }
+  const cfg = readConfig();
+  cfg.servers = cfg.servers || {};
+  cfg.servers[server] = { handle, token };
+  writeConfig(cfg);
+  console.log(`⬡  Logged in as ${handle} → ${server}`);
+  console.log(`   Token saved to ${configPath()}`);
+  console.log(`   Now: livearch share ${handle}/<repo> --server ${server}`);
+}
+
+function cmdLogout(args) {
+  const server = parseServerFlag(args);
+  const cfg = readConfig();
+  if (cfg.servers && cfg.servers[server]) {
+    delete cfg.servers[server];
+    writeConfig(cfg);
+    console.log(`⬡  Logged out of ${server}`);
+  } else {
+    console.log(`Not logged in to ${server}`);
+  }
+}
+
+async function cmdWhoami(args) {
+  const server = parseServerFlag(args);
+  const token = resolveToken(server, '');
+  if (!token) { console.log(`Not logged in to ${server}`); return; }
+  try {
+    const who = await apiGet(server, '/api/auth/whoami', token);
+    console.log(`⬡  ${who.handle}${who.email ? ' <' + who.email + '>' : ''}  (via ${who.provider}) → ${server}`);
+  } catch (e) {
+    console.error(`✗ ${e.message}`);
+    process.exit(1);
+  }
+}
+
+async function apiGet(server, path_, token) {
+  const res = await fetch(server + path_, { headers: token ? { authorization: 'Bearer ' + token } : {} });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`${res.status}: ${data.error || 'request failed'}`);
+  return data;
+}
+async function apiJson(server, method, path_, body, token) {
+  const headers = { 'content-type': 'application/json' };
+  if (token) headers['authorization'] = 'Bearer ' + token;
+  const res = await fetch(server + path_, { method, headers, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`${res.status}: ${data.error || 'request failed'}`);
   return data;
 }
 
@@ -398,7 +512,7 @@ async function ingest(server, handle, slug, arch, token, isPrivate) {
  */
 function cmdShare(args) {
   let server = (process.env.LIVEARCH_SERVER || 'http://localhost:3000').replace(/\/$/, '');
-  let token = process.env.LIVEARCH_INGEST_TOKEN || '';
+  let token = '';
   let dir = process.cwd();
   let isPrivate = false;
   const pos = [];
@@ -409,6 +523,7 @@ function cmdShare(args) {
     else if (args[i] === '--private') isPrivate = true;
     else if (!args[i].startsWith('-')) pos.push(args[i]);
   }
+  token = resolveToken(server, token); // flag → env → stored login
   const target = pos[0];
   if (!target || !target.includes('/')) {
     console.error('Usage: livearch share <handle>/<repo> [--server <url>] [--token <t>] [--private]');
