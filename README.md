@@ -221,6 +221,8 @@ Your choice. Two valid approaches:
 | **Hover a node** | Tooltip with description |
 | **Toggle edges** | Show/hide arrows between nodes |
 | **Highlighted edges** | Select a node — only its connections light up |
+| **Create GitHub issue** | In the AI Review panel, turn any suggestion into a prefilled GitHub issue in one click |
+| **Export PNG / SVG** | Download the whole diagram as an image for docs or slides |
 | **New node flash** | Green flash when a new node is detected |
 | **Scroll + resize** | Arrows redraw to stay accurate |
 
@@ -275,13 +277,14 @@ Python, Go, and other language support is planned — see [Roadmap](#roadmap).
 - [x] Powered by Claude API (`claude-opus-4-8`, structured JSON output)
 - [x] `livearch --review` (CLI) and `🧠 AI Review` button + `/review` endpoint
 - [x] Clicking a suggestion highlights the node in the diagram
-- [ ] One-click fixes / auto-generated GitHub issues
+- [x] One-click auto-generated GitHub issues — each suggestion opens a prefilled GitHub issue (when the repo has a GitHub remote)
 
 ### v1.0 — Team Features (Pro)
 - [x] **Architecture diff** — `livearch diff <base-ref> [head-ref]` compares two git refs
 - [x] **README badge** — `livearch badge` writes an SVG architecture badge you can embed
-- [ ] Shareable public diagram URL *(needs a hosted backend)*
-- [ ] Team collaboration — multiple devs see the same live diagram *(needs a hosted backend)*
+- [x] **Shareable public diagram URL** — self-host the [`server/`](server/) backend for a permanent URL (`livearch push`/`share`)
+- [x] **Team collaboration** — multiple devs see the same live diagram, synced live via SSE (`livearch share`)
+- [ ] Full hosted SaaS — OAuth accounts + a persistent multi-user datastore (currently self-host + filesystem store)
 
 ---
 
@@ -378,6 +381,8 @@ livearch --review                 # full AI review powered by Claude
 ```
 
 Without a key you get a free **Preview** (graph heuristics — over-connected components, missing auth/DB layers, isolated nodes). Set `ANTHROPIC_API_KEY` to unlock the full **Pro** review, which sends the graph to Claude for richer, context-aware suggestions. Click **🧠 AI Review** in the diagram (or use the VS Code extension). Override the model with `LIVEARCH_MODEL` (default `claude-opus-4-8`).
+
+Each suggestion in the review panel has a **⤴ Create GitHub issue** button (shown when your repo has a GitHub `origin` remote). It opens a GitHub *new issue* form pre-filled with the affected component, the concern, and the suggested fix — you review and submit it yourself, so nothing is posted without your click.
 
 ### Architecture diff
 

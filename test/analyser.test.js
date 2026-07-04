@@ -464,3 +464,14 @@ test('template.render includes the diagram export (PNG/SVG) controls', () => {
   assert.match(html, /function exportPng/);
   assert.match(html, /function exportSvg/);
 });
+
+test('template.render wires one-click GitHub issue links when repo is known', () => {
+  const { root, files } = makeFixture();
+  const arch = analyse(root, files);
+  arch.repo = { owner: 'acme', name: 'widgets', url: 'https://github.com/acme/widgets' };
+  const html = template.render(arch, { port: 7842 });
+  assert.match(html, /function issueUrl/);
+  assert.ok(html.includes('ARCH.repo ?'), 'issue link is gated on ARCH.repo');
+  assert.ok(html.includes('/issues/new?title='), 'builds a prefilled new-issue URL');
+  assert.ok(html.includes('github.com/acme/widgets'), 'repo baked into ARCH');
+});

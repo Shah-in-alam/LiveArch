@@ -98,16 +98,25 @@ function main() {
   const WATCH_PATH = opts.path;
   const OUTPUT = path.join(WATCH_PATH, opts.output);
   const trackedFiles = new Set();
+  // Detect the GitHub repo once so the diagram can offer one-click "Create issue"
+  // links for AI-review suggestions. Null for non-GitHub / non-git projects.
+  const REPO = detectRepo(WATCH_PATH);
+
+  function analyseProject() {
+    const arch = analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes, tests: opts.tests, config: opts.config });
+    if (REPO) arch.repo = REPO;
+    return arch;
+  }
 
   function buildOnce() {
-    const arch = analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes, tests: opts.tests, config: opts.config });
+    const arch = analyseProject();
     const html = template.render(arch, { port: opts.port });
     fs.writeFileSync(OUTPUT, html);
     return arch;
   }
 
   function currentArch() {
-    return analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes, tests: opts.tests, config: opts.config });
+    return analyseProject();
   }
 
   // --- AI review: one-shot suggestions and exit ------------------------
@@ -131,8 +140,7 @@ function main() {
   // Serve freshly-rendered HTML so the browser always gets current state.
   // (Rendering in-memory also sidesteps sendFile path quirks on Windows.)
   app.get('/', (_req, res) => {
-    const arch = analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes, tests: opts.tests, config: opts.config });
-    res.type('html').send(template.render(arch, { port: opts.port }));
+    res.type('html').send(template.render(analyseProject(), { port: opts.port }));
   });
   app.get('/arch.json', (_req, res) => res.json(currentArch()));
 
@@ -158,8 +166,7 @@ function main() {
   }
 
   wss.on('connection', (ws) => {
-    const arch = analyse(WATCH_PATH, [...trackedFiles], { endpoints: opts.routes, tests: opts.tests, config: opts.config });
-    ws.send(JSON.stringify({ type: 'init', arch }));
+    ws.send(JSON.stringify({ type: 'init', arch: analyseProject() }));
   });
 
   // --- File watcher (chokidar) -----------------------------------------
@@ -255,6 +262,29 @@ function openBrowser(url) {
 function analyseDir(dir) {
   const files = collectFiles(dir);
   return analyse(dir, files);
+}
+
+/**
+ * Detect the GitHub owner/repo from `git remote origin`, so the diagram can
+ * offer one-click "Create issue" links for AI-review suggestions. Returns
+ * { owner, name, url } for a GitHub remote, or null otherwise.
+ */
+function detectRepo(dir) {
+  let remote;
+  try {
+    remote = execFileSync('git', ['config', '--get', 'remote.origin.url'], {
+      cwd: dir, stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim();
+  } catch {
+    return null; // not a git repo, or no origin
+  }
+  if (!remote) return null;
+  // Match both https and ssh GitHub remotes:
+  //   https://github.com/owner/repo(.git)   git@github.com:owner/repo(.git)
+  const m = remote.match(/github\.com[/:]([^/]+)\/(.+?)(?:\.git)?\/?$/i);
+  if (!m) return null;
+  const owner = m[1], name = m[2];
+  return { owner, name, url: `https://github.com/${owner}/${name}` };
 }
 
 /** Analyse a git ref by checking it out into a throwaway worktree. */
