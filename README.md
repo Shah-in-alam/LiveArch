@@ -238,8 +238,11 @@ LiveArch works with any JavaScript/TypeScript project. It is especially good wit
 - Express / Fastify APIs
 - Full-stack monorepos (frontend + backend in one repo)
 - Any project with a `package.json`
+- **Python** (`requirements.txt` / `pyproject.toml` / `setup.py`) — FastAPI, Django, Flask, SQLAlchemy, …
+- **Go** (`go.mod`) — Gin, Echo, Fiber, chi, GORM, gRPC, …
+- **Rust** (`Cargo.toml`) — Actix, Axum, Rocket, Tokio, Diesel, SQLx, …
 
-Python, Go, and other language support is planned — see [Roadmap](#roadmap).
+More languages are planned — see [Roadmap](#roadmap).
 
 ---
 
@@ -260,6 +263,8 @@ Python, Go, and other language support is planned — see [Roadmap](#roadmap).
 - [x] Detect API endpoints from Express/Fastify routes (opt-in `--routes`)
 - [x] Detect database models from Prisma schema
 - [x] Python project support (`requirements.txt` / `pyproject.toml` / `setup.py`, FastAPI, Django)
+- [x] Go project support (`go.mod` — Gin, Echo, Fiber, chi, GORM, gRPC)
+- [x] Rust project support (`Cargo.toml` — Actix, Axum, Rocket, Tokio, Diesel, SQLx)
 - [x] Monorepo workspace detection (scans `apps/*`, `packages/*`)
 - [x] Official brand logos for detected technologies
 - [x] `--no-watch` CI mode and auto-open browser
@@ -487,7 +492,7 @@ node /path/to/livearch/bin/livearch.js
 ```
 
 ### Areas that need help
-- More language support (Python, Go, Rust)
+- More language support (Java, C#, Ruby, PHP — Python/Go/Rust already supported)
 - Better import parsing to build smarter edges
 - VS Code extension
 - Tests
@@ -510,7 +515,7 @@ LiveArch ignores `node_modules`, `.git`, `dist`, `build`, and `coverage` by defa
 Yes — this is actually recommended. Teammates who clone your repo can immediately open the diagram without running anything.
 
 **Does it work with non-JS projects?**
-Currently JavaScript/TypeScript only. Python, Go, and Rust support are on the roadmap.
+Yes — JavaScript/TypeScript, **Python** (`requirements.txt`/`pyproject.toml`/`setup.py`), **Go** (`go.mod`), and **Rust** (`Cargo.toml`) are all detected, including their frameworks and databases. More languages are on the roadmap.
 
 **Can I use it in CI?**
 Yes. Run `livearch --no-watch` to generate the diagram once and exit (planned for v0.2).

@@ -1,0 +1,19 @@
+[
+  {"id":"dep-go","match":[],"label":"Go","icon":"🐹","type":"framework","layer":"framework"},
+  {"id":"dep-gin","match":["gin-gonic/gin"],"label":"Gin","icon":"🍸","type":"backend","layer":"backend"},
+  {"id":"dep-echo","match":["labstack/echo"],"label":"Echo","icon":"🔊","type":"backend","layer":"backend"},
+  {"id":"dep-fiber","match":["gofiber/fiber"],"label":"Fiber","icon":"🧵","type":"backend","layer":"backend"},
+  {"id":"dep-chi","match":["go-chi/chi"],"label":"chi","icon":"🌱","type":"backend","layer":"backend"},
+  {"id":"dep-gorilla","match":["gorilla/mux"],"label":"Gorilla Mux","icon":"🦍","type":"backend","layer":"backend"},
+  {"id":"dep-gorm","match":["gorm.io/gorm","jinzhu/gorm"],"label":"GORM","icon":"🗃","type":"database","layer":"data"},
+  {"id":"dep-sqlx","match":["jmoiron/sqlx"],"label":"sqlx","icon":"🗃","type":"database","layer":"data"},
+  {"id":"dep-ent","match":["entgo.io/ent"],"label":"Ent","icon":"📐","type":"database","layer":"data"},
+  {"id":"dep-pg","match":["lib/pq","jackc/pgx"],"label":"PostgreSQL","icon":"🐘","type":"database","layer":"data"},
+  {"id":"dep-mongo","match":["go.mongodb.org","mongo-driver"],"label":"MongoDB","icon":"🍃","type":"database","layer":"data"},
+  {"id":"dep-redis","match":["go-redis","gomodule/redigo"],"label":"Redis","icon":"⚡","type":"database","layer":"data"},
+  {"id":"dep-grpc","match":["google.golang.org/grpc"],"label":"gRPC","icon":"📡","type":"external","layer":"external"},
+  {"id":"dep-kafka","match":["segmentio/kafka-go","confluentinc/confluent-kafka-go"],"label":"Kafka","icon":"📨","type":"external","layer":"external"},
+  {"id":"dep-aws","match":["aws/aws-sdk-go"],"label":"AWS","icon":"☁","type":"external","layer":"external"},
+  {"id":"dep-cobra","match":["spf13/cobra"],"label":"Cobra CLI","icon":"🐍","type":"tooling","layer":"tooling"},
+  {"id":"dep-testify","match":["stretchr/testify"],"label":"Testify","icon":"🧪","type":"tooling","layer":"tooling"}
+]

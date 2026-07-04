@@ -1,0 +1,18 @@
+[
+  {"id":"dep-rust","match":[],"label":"Rust","icon":"🦀","type":"framework","layer":"framework"},
+  {"id":"dep-actix","match":["actix-web"],"label":"Actix Web","icon":"🎭","type":"backend","layer":"backend"},
+  {"id":"dep-axum","match":["axum"],"label":"Axum","icon":"🪓","type":"backend","layer":"backend"},
+  {"id":"dep-rocket","match":["rocket"],"label":"Rocket","icon":"🚀","type":"backend","layer":"backend"},
+  {"id":"dep-warp","match":["warp"],"label":"Warp","icon":"🌀","type":"backend","layer":"backend"},
+  {"id":"dep-tower","match":["tower-http"],"label":"Tower","icon":"🗼","type":"middleware","layer":"backend"},
+  {"id":"dep-tokio","match":["tokio"],"label":"Tokio","icon":"⏱","type":"tooling","layer":"tooling"},
+  {"id":"dep-serde","match":["serde"],"label":"Serde","icon":"🔄","type":"tooling","layer":"tooling"},
+  {"id":"dep-diesel","match":["diesel"],"label":"Diesel","icon":"🛢","type":"database","layer":"data"},
+  {"id":"dep-sqlx","match":["sqlx"],"label":"SQLx","icon":"🗃","type":"database","layer":"data"},
+  {"id":"dep-sea-orm","match":["sea-orm"],"label":"SeaORM","icon":"🌊","type":"database","layer":"data"},
+  {"id":"dep-redis","match":["redis"],"label":"Redis","icon":"⚡","type":"database","layer":"data"},
+  {"id":"dep-mongo","match":["mongodb"],"label":"MongoDB","icon":"🍃","type":"database","layer":"data"},
+  {"id":"dep-reqwest","match":["reqwest","hyper"],"label":"HTTP client","icon":"🌐","type":"external","layer":"external"},
+  {"id":"dep-tonic","match":["tonic"],"label":"gRPC (tonic)","icon":"📡","type":"external","layer":"external"},
+  {"id":"dep-clap","match":["clap"],"label":"clap CLI","icon":"👏","type":"tooling","layer":"tooling"}
+]
