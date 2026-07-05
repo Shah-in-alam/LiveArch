@@ -292,7 +292,8 @@ More languages are planned — see [Roadmap](#roadmap).
 - [x] **Accounts & scoped tokens** — `livearch login` claims a handle; only that account can publish under it, with private projects and snapshot history
 - [x] **Persistent datastore** — set `DATABASE_URL` to run on Neon Postgres instead of the filesystem (same API; auto-creates tables)
 - [x] **Plan tiers with gating** — Free/Pro/Team; private projects, project count, and history depth are enforced server-side (`livearch upgrade`)
-- [ ] Managed SaaS — real Stripe billing (self-serve upgrade is stubbed), team membership/roles, and going-live GitHub OAuth are the remaining hosted work
+- [x] **Stripe billing** — `LIVEARCH_BILLING=stripe` routes upgrades through Stripe Checkout; a webhook applies the plan (falls back to instant upgrade for self-host)
+- [ ] Managed SaaS — team membership/roles and going-live GitHub OAuth are the remaining hosted work
 
 ---
 
@@ -489,7 +490,7 @@ Once you claim a handle with `login`, **only your account can publish under it**
 livearch whoami --server http://localhost:3000        # shows your plan + limits
 livearch upgrade --plan pro --server http://localhost:3000
 ```
-In this self-host build the upgrade is immediate (no payment) — the honest stand-in for billing; production would route it through Stripe checkout (`LIVEARCH_BILLING=stripe`).
+By default the upgrade is immediate (no payment) — the self-host stand-in. Set `LIVEARCH_BILLING=stripe` (plus your Stripe keys) and `upgrade` returns a **Stripe Checkout** URL instead; after payment a webhook applies the plan. See [`server/README.md`](server/README.md).
 
 By default this stores everything on the filesystem — set `DATABASE_URL` (e.g. Neon, provisioned via the Vercel Marketplace) and it runs on **Postgres** instead, with no other changes (tables auto-create; schema in [`server/db/schema.sql`](server/db/schema.sql)).
 
