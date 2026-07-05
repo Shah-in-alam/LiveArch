@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { safeSeg } = require('./segments');
+const { planFor } = require('./plans');
 const { DATA_DIR } = require('./store');
 const accounts = require('./accounts');
 
@@ -57,6 +58,17 @@ async function authorizeWriteFs(handle, slug, token, opts = {}) {
       const e = new Error('this handle belongs to another account');
       e.code = 'FORBIDDEN';
       throw e;
+    }
+    const limits = planFor(account);
+    // Plan gate: private projects require a paid plan.
+    if (opts.private && !limits.privateProjects) {
+      const e = new Error('private projects require the Pro plan — run `livearch upgrade --plan pro`');
+      e.code = 'PLAN_REQUIRED'; throw e;
+    }
+    // Plan gate: cap the number of hosted projects on the Free plan.
+    if (!existed && (await accounts.countProjects(account.id)) >= limits.maxProjects) {
+      const e = new Error(`the ${limits.label} plan is limited to ${limits.maxProjects} hosted projects — run \`livearch upgrade --plan pro\``);
+      e.code = 'PLAN_LIMIT'; throw e;
     }
     const meta = (await getMetaFs(handle, slug)) || { createdAt: Date.now() };
     meta.ownerAccountId = handleOwner;

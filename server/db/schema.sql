@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   email       TEXT,
   provider    TEXT NOT NULL DEFAULT 'token',   -- 'token' | 'github'
   provider_id TEXT,                            -- external identity (e.g. GitHub user id)
+  plan        TEXT NOT NULL DEFAULT 'free',    -- 'free' | 'pro' | 'team'
   created_at  BIGINT NOT NULL
 );
 

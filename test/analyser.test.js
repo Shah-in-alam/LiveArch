@@ -512,6 +512,8 @@ async function accountFlow({ accounts, projects }) {
   await assert.rejects(() => projects.authorizeWrite('alice', 'app', ''), (e) => e.code === 'FORBIDDEN', 'anon rejected on owned handle');
 
   // private account project: readable only by the owning account's token
+  // (private requires a paid plan — upgrade first).
+  await accounts.setPlan(account.id, 'pro');
   await projects.authorizeWrite('alice', 'app', token, { private: true });
   assert.equal(await projects.canRead('alice', 'app', ''), false);
   assert.equal(await projects.canRead('alice', 'app', bob.token), false);
@@ -536,6 +538,37 @@ async function historyFlow({ store }) {
   assert.equal(hist[0].arch.nodes[0].id, 'n' + (store.HISTORY_MAX + 4), 'newest first');
   assert.ok(hist[0].at >= hist[1].at, 'timestamps descending');
   assert.deepEqual(await store.getHistory('nobody', 'x'), []);
+
+  // per-plan history depth: cap to a smaller depth
+  for (let i = 0; i < 10; i++) {
+    await store.appendHistory('me', 'small', { name: 'x', nodes: [{ id: 'h' + i }], edges: [] }, 5);
+  }
+  assert.equal((await store.getHistory('me', 'small')).length, 5, 'history capped to the given depth');
+}
+
+async function planFlow({ accounts, projects, store }) {
+  const { account, token } = await accounts.createAccount({ handle: 'alice' });
+  assert.equal(account.plan, 'free', 'new accounts start on Free');
+
+  // Free plan: private projects are blocked.
+  await assert.rejects(() => projects.authorizeWrite('alice', 'secret', token, { private: true }), (e) => e.code === 'PLAN_REQUIRED');
+
+  // Free plan: up to 3 hosted projects.
+  await projects.authorizeWrite('alice', 'p1', token);
+  await projects.authorizeWrite('alice', 'p2', token);
+  await projects.authorizeWrite('alice', 'p3', token);
+  assert.equal(await accounts.countProjects(account.id), 3);
+  await assert.rejects(() => projects.authorizeWrite('alice', 'p4', token), (e) => e.code === 'PLAN_LIMIT');
+
+  // Upgrade to Pro lifts both gates.
+  const up = await accounts.setPlan(account.id, 'pro');
+  assert.equal(up.plan, 'pro');
+  const w = await projects.authorizeWrite('alice', 'p4', token, { private: true });
+  assert.equal(w.meta.visibility, 'private', 'Pro can create private projects');
+  assert.ok((await accounts.countProjects(account.id)) >= 4, 'Pro is not capped at 3');
+
+  // Unknown plan rejected.
+  await assert.rejects(() => accounts.setPlan(account.id, 'ultra'), (e) => e.code === 'BAD_PLAN');
 }
 
 test('accounts: register, tokens, and handle ownership (filesystem)', async () => {
@@ -545,6 +578,11 @@ test('accounts: register, tokens, and handle ownership (filesystem)', async () =
 
 test('snapshot history is newest-first and capped (filesystem)', async () => {
   await historyFlow(freshHosted('livearch-hist-'));
+  delete process.env.LIVEARCH_DATA_DIR;
+});
+
+test('plan gating: private + project limits + upgrade (filesystem)', async () => {
+  await planFlow(freshHosted('livearch-plan-'));
   delete process.env.LIVEARCH_DATA_DIR;
 });
 
@@ -579,6 +617,13 @@ test('Postgres backend runs the snapshot history flow (pg-mem)', async () => {
   const mods = freshHostedPg();
   await mods.pg.init();
   await historyFlow(mods);
+  delete process.env.DATABASE_URL;
+});
+
+test('Postgres backend runs the plan gating flow (pg-mem)', async () => {
+  const mods = freshHostedPg();
+  await mods.pg.init();
+  await planFlow(mods);
   delete process.env.DATABASE_URL;
 });
 

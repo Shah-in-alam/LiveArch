@@ -22,6 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { safeSeg } = require('./segments');
+const { isPlan, DEFAULT_PLAN } = require('./plans');
 const { DATA_DIR } = require('./store');
 
 const ACCOUNTS_DIR = path.join(DATA_DIR, '_accounts');
@@ -101,11 +102,35 @@ async function createAccountFs({ handle, email, provider = 'token', providerId =
   }
   if (await getHandleOwnerFs(h)) { const e = new Error(`handle "${h}" is already taken`); e.code = 'HANDLE_TAKEN'; throw e; }
   const id = crypto.randomBytes(12).toString('hex');
-  const account = { id, handle: h, email: email || null, provider, providerId, createdAt: Date.now() };
+  const account = { id, handle: h, email: email || null, provider, providerId, plan: DEFAULT_PLAN, createdAt: Date.now() };
   writeJSON(path.join(ACCOUNTS_DIR, id + '.json'), account);
   writeJSON(handleFile(h), { ownerAccountId: id, createdAt: Date.now() });
   const token = await issueTokenFs(id, 'cli');
   return { account, token };
+}
+async function setPlanFs(accountId, plan) {
+  if (!isPlan(plan)) { const e = new Error('unknown plan: ' + plan); e.code = 'BAD_PLAN'; throw e; }
+  const f = path.join(ACCOUNTS_DIR, accountId + '.json');
+  const acc = readJSON(f);
+  if (!acc) return null;
+  acc.plan = plan;
+  writeJSON(f, acc);
+  return acc;
+}
+/** Count projects owned by an account (its handle dir's *.meta.json files). */
+async function countProjectsFs(accountId) {
+  const acc = await getAccountFs(accountId);
+  if (!acc) return 0;
+  const dir = path.join(DATA_DIR, acc.handle);
+  let names;
+  try { names = fs.readdirSync(dir); } catch { return 0; }
+  let n = 0;
+  for (const name of names) {
+    if (!name.endsWith('.meta.json')) continue;
+    const meta = readJSON(path.join(dir, name));
+    if (meta && meta.ownerAccountId === accountId) n++;
+  }
+  return n;
 }
 async function findByProviderFs(provider, providerId) {
   let names;
@@ -126,12 +151,14 @@ if (usePg) {
     createAccount: pg.createAccount, resolveToken: pg.resolveToken, getAccount: pg.getAccount,
     getHandleOwner: pg.getHandleOwner, issueToken: pg.issueToken, listTokens: pg.listTokens,
     revokeToken: pg.revokeToken, findByProvider: pg.findByProvider,
+    setPlan: pg.setPlan, countProjects: pg.countProjects,
   };
 } else {
   api = {
     createAccount: createAccountFs, resolveToken: resolveTokenFs, getAccount: getAccountFs,
     getHandleOwner: getHandleOwnerFs, issueToken: issueTokenFs, listTokens: listTokensFs,
     revokeToken: revokeTokenFs, findByProvider: findByProviderFs,
+    setPlan: setPlanFs, countProjects: countProjectsFs,
   };
 }
 

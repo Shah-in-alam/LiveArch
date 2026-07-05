@@ -17,8 +17,12 @@ const fs = require('fs');
 const path = require('path');
 const { safeSeg } = require('./segments');
 
-const DATA_DIR = process.env.LIVEARCH_DATA_DIR || path.join(__dirname, '..', '.data');
-const HISTORY_MAX = 20;
+// Anchor to the process CWD (the server root under `next dev`/`next start`),
+// not __dirname: Next.js bundles these modules, so __dirname points into
+// .next/ and can differ between route bundles — which would split the store
+// across directories. CWD is shared by every route. Override with LIVEARCH_DATA_DIR.
+const DATA_DIR = process.env.LIVEARCH_DATA_DIR || path.join(process.cwd(), '.data');
+const HISTORY_MAX = 50; // global hard cap; per-plan depth is applied on top
 const usePg = !!(process.env.DATABASE_URL || process.env.POSTGRES_URL);
 
 function fileFor(handle, slug) {
@@ -50,15 +54,16 @@ async function getSnapshotFs(handle, slug) {
   try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; }
 }
 
-/** Append a snapshot to the rolling history (newest first, capped). */
-async function appendHistoryFs(handle, slug, arch) {
+/** Append a snapshot to the rolling history (newest first, capped per plan). */
+async function appendHistoryFs(handle, slug, arch, maxDepth) {
   const f = historyFile(handle, slug);
   if (!f) return;
+  const cap = Math.min(Number.isFinite(maxDepth) && maxDepth > 0 ? maxDepth : HISTORY_MAX, HISTORY_MAX);
   let list = [];
   try { list = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* new / corrupt */ }
   if (!Array.isArray(list)) list = [];
   list.unshift({ arch, at: Date.now() });
-  if (list.length > HISTORY_MAX) list.length = HISTORY_MAX;
+  if (list.length > cap) list.length = cap;
   try {
     fs.mkdirSync(path.dirname(f), { recursive: true });
     fs.writeFileSync(f, JSON.stringify(list));
