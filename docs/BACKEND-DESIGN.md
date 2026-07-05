@@ -185,9 +185,9 @@ livearch push                  # one-shot upload (CI: publish the current archit
    real time across networks.
 3. **Phase 3 — Accounts & teams.** ✅ accounts, scoped tokens, handle ownership,
    private projects, snapshot history, plan tiers (Free/Pro/Team) with gating,
-   Stripe billing, team membership/roles, a Neon Postgres datastore
-   (`DATABASE_URL`), and env-gated GitHub OAuth. Remaining: going-live GitHub
-   OAuth (needs an app) and server-side branch diff.
+   Stripe billing, team membership/roles, server-side branch diff, a Neon
+   Postgres datastore (`DATABASE_URL`), and env-gated GitHub OAuth. Remaining:
+   going-live GitHub OAuth (needs an app).
 
 MVP is Phase 1: it's mostly the existing analyser/template plus one POST endpoint
 and one SSR page — a few days of work, no realtime complexity.

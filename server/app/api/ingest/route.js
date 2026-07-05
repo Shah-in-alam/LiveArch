@@ -38,7 +38,7 @@ export async function POST(req) {
   }
 
   await saveSnapshot(handle, slug, arch);
-  await appendHistory(handle, slug, arch, planFor(account).historyDepth);
+  await appendHistory(handle, slug, arch, planFor(account).historyDepth, body.branch);
   publish(handle + '/' + slug, { arch });
   return Response.json({ ok: true, url: `/u/${handle}/${slug}`, nodes: arch.nodes.length, visibility: meta.visibility, plan: account ? account.plan : null });
 }

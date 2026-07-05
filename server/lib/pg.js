@@ -82,9 +82,11 @@ async function init() {
       id BIGSERIAL PRIMARY KEY,
       handle TEXT NOT NULL,
       slug TEXT NOT NULL,
+      branch TEXT NOT NULL DEFAULT 'main',
       arch JSONB NOT NULL,
       at BIGINT NOT NULL
     )`);
+    try { await q(`ALTER TABLE snapshot_history ADD COLUMN IF NOT EXISTS branch TEXT NOT NULL DEFAULT 'main'`); } catch { /* older engines / pg-mem */ }
     await q(`CREATE INDEX IF NOT EXISTS idx_history_project ON snapshot_history (handle, slug, at DESC)`);
     await q(`CREATE TABLE IF NOT EXISTS project_members (
       handle TEXT NOT NULL,
@@ -132,13 +134,13 @@ async function getSnapshot(handle, slug) {
   return { arch, updatedAt: Number(rows[0].updated_at) };
 }
 
-async function appendHistory(handle, slug, arch, maxDepth) {
+async function appendHistory(handle, slug, arch, maxDepth, branch) {
   const h = safeSeg(handle), s = safeSeg(slug);
   if (!h || !s) return;
   await init();
   const cap = Math.min(Number.isFinite(maxDepth) && maxDepth > 0 ? maxDepth : HISTORY_MAX, HISTORY_MAX);
-  await q(`INSERT INTO snapshot_history (handle, slug, arch, at) VALUES ($1,$2,$3,$4)`,
-    [h, s, JSON.stringify(arch), Date.now()]);
+  await q(`INSERT INTO snapshot_history (handle, slug, branch, arch, at) VALUES ($1,$2,$3,$4,$5)`,
+    [h, s, branch || 'main', JSON.stringify(arch), Date.now()]);
   // Trim to the newest `cap` for this project (plan-dependent).
   await q(
     `DELETE FROM snapshot_history WHERE handle=$1 AND slug=$2 AND id NOT IN (
@@ -153,10 +155,10 @@ async function getHistory(handle, slug) {
   if (!h || !s) return [];
   await init();
   const { rows } = await q(
-    `SELECT arch, at FROM snapshot_history WHERE handle=$1 AND slug=$2 ORDER BY at DESC, id DESC LIMIT $3`,
+    `SELECT branch, arch, at FROM snapshot_history WHERE handle=$1 AND slug=$2 ORDER BY at DESC, id DESC LIMIT $3`,
     [h, s, HISTORY_MAX]
   );
-  return rows.map((r) => ({ arch: typeof r.arch === 'string' ? JSON.parse(r.arch) : r.arch, at: Number(r.at) }));
+  return rows.map((r) => ({ arch: typeof r.arch === 'string' ? JSON.parse(r.arch) : r.arch, at: Number(r.at), branch: r.branch || 'main' }));
 }
 
 // --- accounts & tokens ----------------------------------------------------

@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS snapshot_history (
   id     BIGSERIAL PRIMARY KEY,
   handle TEXT NOT NULL,
   slug   TEXT NOT NULL,
+  branch TEXT NOT NULL DEFAULT 'main',
   arch   JSONB NOT NULL,
   at     BIGINT NOT NULL
 );

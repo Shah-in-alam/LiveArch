@@ -294,6 +294,7 @@ More languages are planned — see [Roadmap](#roadmap).
 - [x] **Plan tiers with gating** — Free/Pro/Team; private projects, project count, and history depth are enforced server-side (`livearch upgrade`)
 - [x] **Stripe billing** — `LIVEARCH_BILLING=stripe` routes upgrades through Stripe Checkout; a webhook applies the plan (falls back to instant upgrade for self-host)
 - [x] **Team membership & roles** — Team-plan owners invite accounts to a project as `member` (read+write) or `viewer` (read private); enforced in push/read (`livearch team`)
+- [x] **Server-side branch diff** — push per branch (`--branch`) and compare hosted snapshots (`livearch diff <handle>/<repo> --server ... --base main --head feature`)
 - [ ] Managed SaaS — going-live GitHub OAuth (needs an OAuth app) is the last remaining hosted piece
 
 ---
@@ -405,9 +406,13 @@ Each suggestion in the review panel has a **⤴ Create GitHub issue** button (sh
 ```bash
 livearch diff main                # compare main → your working tree
 livearch diff main feature/auth   # compare two branches/refs
+
+# hosted: compare snapshots published to a server (by branch or revision)
+livearch diff me/app --server http://localhost:3000 --base main --head feature
+livearch diff me/app --server http://localhost:3000 --steps 1   # vs the previous push
 ```
 
-Prints added/removed nodes and connections — great for reviewing what a branch changes structurally.
+Prints added/removed nodes and connections — great for reviewing what a branch changes structurally. Publish per-branch snapshots with `livearch push me/app --branch <name>` (the branch is auto-detected from git when omitted).
 
 ### README badge
 
