@@ -26,7 +26,7 @@ export async function POST(req) {
 
   let meta;
   try {
-    ({ meta } = authorizeWrite(handle, slug, token, { private: body.private }));
+    ({ meta } = await authorizeWrite(handle, slug, token, { private: body.private }));
   } catch (e) {
     if (e.code === 'FORBIDDEN') return Response.json({ error: e.message, code: 'FORBIDDEN' }, { status: 403 });
     return Response.json({ error: e.message }, { status: 400 });
