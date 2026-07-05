@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req, { params }) {
   const { handle, slug } = params;
   const token = new URL(req.url).searchParams.get('token') || '';
-  if (!canRead(handle, slug, token)) {
+  if (!(await canRead(handle, slug, token))) {
     return new Response('forbidden', { status: 403 });
   }
   const key = handle + '/' + slug;
@@ -21,10 +21,7 @@ export async function GET(req, { params }) {
       const send = (obj) => {
         try { controller.enqueue(enc.encode('data: ' + JSON.stringify(obj) + '\n\n')); } catch { /* closed */ }
       };
-      // send the current snapshot immediately, then live updates
-      const snap = getSnapshot(handle, slug);
-      if (snap) send({ type: 'update', arch: snap.arch });
-
+      // Subscribe first so no update is missed while the snapshot loads.
       const unsub = subscribe(key, (data) => send({ type: 'update', arch: data.arch, event: 'change' }));
       const keepAlive = setInterval(() => {
         try { controller.enqueue(enc.encode(': keep-alive\n\n')); } catch { /* closed */ }
@@ -35,6 +32,12 @@ export async function GET(req, { params }) {
         unsub();
         try { controller.close(); } catch { /* already closed */ }
       });
+
+      // Send the current snapshot immediately, then live updates follow.
+      (async () => {
+        const snap = await getSnapshot(handle, slug);
+        if (snap) send({ type: 'update', arch: snap.arch });
+      })();
     },
   });
 

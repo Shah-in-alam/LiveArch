@@ -43,16 +43,16 @@ export async function GET(req) {
   if (!gh || !gh.id) return Response.json({ error: 'invalid GitHub profile' }, { status: 502 });
 
   // 3. Find or create the account, then issue a token.
-  let account = findByProvider('github', gh.id);
+  let account = await findByProvider('github', gh.id);
   let token;
   if (account) {
-    token = issueToken(account.id, 'github-login');
+    token = await issueToken(account.id, 'github-login');
   } else {
     // Pick a free handle derived from the GitHub login.
     let handle = String(gh.login || 'user').toLowerCase().replace(/[^a-z0-9._-]/g, '-');
-    if (getHandleOwner(handle)) handle = `${handle}-${String(gh.id).slice(-4)}`;
+    if (await getHandleOwner(handle)) handle = `${handle}-${String(gh.id).slice(-4)}`;
     try {
-      ({ account, token } = createAccount({ handle, email: gh.email || null, provider: 'github', providerId: gh.id }));
+      ({ account, token } = await createAccount({ handle, email: gh.email || null, provider: 'github', providerId: gh.id }));
     } catch (e) {
       return Response.json({ error: 'could not create account: ' + e.message, code: e.code }, { status: 409 });
     }

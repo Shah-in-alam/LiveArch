@@ -2,3 +2,7 @@ node_modules/
 .next/
 .data/
 *.log
+
+# local env (keep .env.example tracked)
+.env
+.env*.local

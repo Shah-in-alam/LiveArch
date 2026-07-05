@@ -12,7 +12,7 @@ export async function POST(req) {
   try { body = await req.json(); } catch { return Response.json({ error: 'invalid JSON body' }, { status: 400 }); }
   const { handle, email } = body || {};
   try {
-    const { account, token } = createAccount({ handle, email });
+    const { account, token } = await createAccount({ handle, email });
     return Response.json({
       ok: true,
       handle: account.handle,

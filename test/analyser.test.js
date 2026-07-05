@@ -420,26 +420,22 @@ test('badgeSvg produces a valid SVG with the node count', () => {
   assert.match(badgeMarkdown('docs/b.svg'), /!\[Architecture\]\(docs\/b\.svg\)/);
 });
 
-test('hosted store round-trips a snapshot and renders a snapshot viewer', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-store-'));
-  process.env.LIVEARCH_DATA_DIR = dir;
-  // require after setting the env so the store picks up the temp dir
-  delete require.cache[require.resolve('../server/lib/store')];
-  const store = require('../server/lib/store');
+test('hosted store round-trips a snapshot and renders a snapshot viewer', async () => {
+  const { store } = freshHosted('livearch-store-');
   const { renderViewer } = require('../server/lib/render');
 
   const { root, files } = makeFixture();
   const arch = analyse(root, files);
 
-  const saved = store.saveSnapshot('me', 'my-repo', arch);
+  const saved = await store.saveSnapshot('me', 'my-repo', arch);
   assert.deepEqual(saved, { handle: 'me', slug: 'my-repo' });
-  const snap = store.getSnapshot('me', 'my-repo');
+  const snap = await store.getSnapshot('me', 'my-repo');
   assert.equal(snap.arch.name, arch.name);
   assert.ok(snap.updatedAt > 0);
-  assert.equal(store.getSnapshot('nope', 'nope'), null);
+  assert.equal(await store.getSnapshot('nope', 'nope'), null);
 
   // path-traversal / invalid segments rejected
-  assert.throws(() => store.saveSnapshot('../evil', 'x', arch));
+  await assert.rejects(() => store.saveSnapshot('../evil', 'x', arch));
 
   const html = renderViewer(snap);
   assert.match(html, /<!DOCTYPE html>/);
@@ -452,38 +448,36 @@ test('hosted store round-trips a snapshot and renders a snapshot viewer', () => 
   delete process.env.LIVEARCH_DATA_DIR;
 });
 
-test('project access control: ownership + private visibility', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-acl-'));
-  process.env.LIVEARCH_DATA_DIR = dir;
-  for (const m of ['../server/lib/store', '../server/lib/projects']) delete require.cache[require.resolve(m)];
-  const projects = require('../server/lib/projects');
+test('project access control: ownership + private visibility', async () => {
+  const { projects } = freshHosted('livearch-acl-');
 
   // first write with a token → creates an owned project (public by default)
-  const a = projects.authorizeWrite('me', 'app', 'owner-tok');
+  const a = await projects.authorizeWrite('me', 'app', 'owner-tok');
   assert.equal(a.created, true);
   assert.equal(a.meta.visibility, 'public');
-  assert.ok(projects.canRead('me', 'app', ''), 'public readable by anyone');
+  assert.ok(await projects.canRead('me', 'app', ''), 'public readable by anyone');
 
   // a different token cannot write to an owned project
-  assert.throws(() => projects.authorizeWrite('me', 'app', 'other-tok'), (e) => e.code === 'FORBIDDEN');
+  await assert.rejects(() => projects.authorizeWrite('me', 'app', 'other-tok'), (e) => e.code === 'FORBIDDEN');
   // the owner can, and can flip it private
-  projects.authorizeWrite('me', 'app', 'owner-tok', { private: true });
-  assert.equal(projects.canRead('me', 'app', ''), false, 'private not readable anon');
-  assert.equal(projects.canRead('me', 'app', 'other-tok'), false, 'private not readable by non-owner');
-  assert.equal(projects.canRead('me', 'app', 'owner-tok'), true, 'private readable by owner');
+  await projects.authorizeWrite('me', 'app', 'owner-tok', { private: true });
+  assert.equal(await projects.canRead('me', 'app', ''), false, 'private not readable anon');
+  assert.equal(await projects.canRead('me', 'app', 'other-tok'), false, 'private not readable by non-owner');
+  assert.equal(await projects.canRead('me', 'app', 'owner-tok'), true, 'private readable by owner');
 
   // a project with no metadata (legacy/open) is readable
-  assert.ok(projects.canRead('nobody', 'nothing', ''));
+  assert.ok(await projects.canRead('nobody', 'nothing', ''));
   delete process.env.LIVEARCH_DATA_DIR;
 });
 
-// Fresh-require the hosted modules against a temp data dir (they cache DATA_DIR
-// at require time, so cache must be cleared after setting the env).
+// Fresh-require the hosted modules against a temp data dir (they cache their
+// backend selection + DATA_DIR at require time, so clear the cache after
+// setting the env). Also clears segments/pg so a pg test can re-select cleanly.
 function freshHosted(prefix) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   process.env.LIVEARCH_DATA_DIR = dir;
-  for (const m of ['../server/lib/store', '../server/lib/accounts', '../server/lib/projects']) {
-    delete require.cache[require.resolve(m)];
+  for (const m of ['../server/lib/segments', '../server/lib/pg', '../server/lib/store', '../server/lib/accounts', '../server/lib/projects']) {
+    try { delete require.cache[require.resolve(m)]; } catch { /* not loaded */ }
   }
   return {
     store: require('../server/lib/store'),
@@ -492,61 +486,100 @@ function freshHosted(prefix) {
   };
 }
 
-test('accounts: register, tokens, and handle ownership', () => {
-  const { accounts, projects } = freshHosted('livearch-acct-');
-
-  const { account, token } = accounts.createAccount({ handle: 'alice', email: 'a@b.com' });
+// Backend-agnostic behaviour, exercised against both the filesystem and
+// Postgres (pg-mem) backends below.
+async function accountFlow({ accounts, projects }) {
+  const { account, token } = await accounts.createAccount({ handle: 'alice', email: 'a@b.com' });
   assert.equal(account.handle, 'alice');
   assert.ok(token.startsWith('la_'), 'token is a secret string');
-  assert.equal(accounts.resolveToken(token).id, account.id, 'token resolves to account');
-  assert.equal(accounts.getHandleOwner('alice'), account.id, 'handle claimed');
+  assert.equal((await accounts.resolveToken(token)).id, account.id, 'token resolves to account');
+  assert.equal(await accounts.getHandleOwner('alice'), account.id, 'handle claimed');
 
   // validation
-  assert.throws(() => accounts.createAccount({ handle: 'alice' }), (e) => e.code === 'HANDLE_TAKEN');
-  assert.throws(() => accounts.createAccount({ handle: 'Bad Handle!' }), (e) => e.code === 'BAD_HANDLE');
-  assert.throws(() => accounts.createAccount({ handle: 'carol', email: 'nope' }), (e) => e.code === 'BAD_EMAIL');
+  await assert.rejects(() => accounts.createAccount({ handle: 'alice' }), (e) => e.code === 'HANDLE_TAKEN');
+  await assert.rejects(() => accounts.createAccount({ handle: 'Bad Handle!' }), (e) => e.code === 'BAD_HANDLE');
+  await assert.rejects(() => accounts.createAccount({ handle: 'carol', email: 'nope' }), (e) => e.code === 'BAD_EMAIL');
 
   // account owns every project under its handle
-  const w = projects.authorizeWrite('alice', 'app', token);
+  const w = await projects.authorizeWrite('alice', 'app', token);
   assert.equal(w.created, true);
   assert.equal(w.meta.ownerAccountId, account.id);
 
   // a different account cannot write under alice's handle
-  const bob = accounts.createAccount({ handle: 'bob' });
-  assert.throws(() => projects.authorizeWrite('alice', 'app', bob.token), (e) => e.code === 'FORBIDDEN');
-  assert.throws(() => projects.authorizeWrite('alice', 'other', bob.token), (e) => e.code === 'FORBIDDEN');
-  assert.throws(() => projects.authorizeWrite('alice', 'app', ''), (e) => e.code === 'FORBIDDEN', 'anon rejected on owned handle');
+  const bob = await accounts.createAccount({ handle: 'bob' });
+  await assert.rejects(() => projects.authorizeWrite('alice', 'app', bob.token), (e) => e.code === 'FORBIDDEN');
+  await assert.rejects(() => projects.authorizeWrite('alice', 'other', bob.token), (e) => e.code === 'FORBIDDEN');
+  await assert.rejects(() => projects.authorizeWrite('alice', 'app', ''), (e) => e.code === 'FORBIDDEN', 'anon rejected on owned handle');
 
   // private account project: readable only by the owning account's token
-  projects.authorizeWrite('alice', 'app', token, { private: true });
-  assert.equal(projects.canRead('alice', 'app', ''), false);
-  assert.equal(projects.canRead('alice', 'app', bob.token), false);
-  assert.equal(projects.canRead('alice', 'app', token), true);
+  await projects.authorizeWrite('alice', 'app', token, { private: true });
+  assert.equal(await projects.canRead('alice', 'app', ''), false);
+  assert.equal(await projects.canRead('alice', 'app', bob.token), false);
+  assert.equal(await projects.canRead('alice', 'app', token), true);
 
   // token management: issue a second, then revoke it
-  const t2 = accounts.issueToken(account.id, 'ci');
-  assert.ok(accounts.listTokens(account.id).length >= 2);
-  assert.equal(accounts.resolveToken(t2).id, account.id);
-  const hash2 = accounts.hash(t2);
-  assert.equal(accounts.revokeToken(account.id, hash2), true);
-  assert.equal(accounts.resolveToken(t2), null, 'revoked token no longer resolves');
+  const t2 = await accounts.issueToken(account.id, 'ci');
+  assert.ok((await accounts.listTokens(account.id)).length >= 2);
+  assert.equal((await accounts.resolveToken(t2)).id, account.id);
+  assert.equal(await accounts.revokeToken(account.id, accounts.hash(t2)), true);
+  assert.equal(await accounts.resolveToken(t2), null, 'revoked token no longer resolves');
   // cannot revoke another account's token
-  assert.equal(accounts.revokeToken(bob.account.id, accounts.hash(token)), false);
+  assert.equal(await accounts.revokeToken(bob.account.id, accounts.hash(token)), false);
+}
 
-  delete process.env.LIVEARCH_DATA_DIR;
-});
-
-test('snapshot history is newest-first and capped', () => {
-  const { store } = freshHosted('livearch-hist-');
+async function historyFlow({ store }) {
   for (let i = 0; i < store.HISTORY_MAX + 5; i++) {
-    store.appendHistory('me', 'app', { name: 'app', nodes: [{ id: 'n' + i }], edges: [] });
+    await store.appendHistory('me', 'app', { name: 'app', nodes: [{ id: 'n' + i }], edges: [] });
   }
-  const hist = store.getHistory('me', 'app');
+  const hist = await store.getHistory('me', 'app');
   assert.equal(hist.length, store.HISTORY_MAX, 'capped at HISTORY_MAX');
   assert.equal(hist[0].arch.nodes[0].id, 'n' + (store.HISTORY_MAX + 4), 'newest first');
   assert.ok(hist[0].at >= hist[1].at, 'timestamps descending');
-  assert.deepEqual(store.getHistory('nobody', 'x'), []);
+  assert.deepEqual(await store.getHistory('nobody', 'x'), []);
+}
+
+test('accounts: register, tokens, and handle ownership (filesystem)', async () => {
+  await accountFlow(freshHosted('livearch-acct-'));
   delete process.env.LIVEARCH_DATA_DIR;
+});
+
+test('snapshot history is newest-first and capped (filesystem)', async () => {
+  await historyFlow(freshHosted('livearch-hist-'));
+  delete process.env.LIVEARCH_DATA_DIR;
+});
+
+// Require the hosted modules with DATABASE_URL set (→ Postgres backend) and an
+// injected in-memory Postgres (pg-mem), so the exact same SQL runs the flows.
+function freshHostedPg() {
+  const { newDb } = require('pg-mem');
+  const pool = new (newDb().adapters.createPg().Pool)();
+  process.env.DATABASE_URL = 'postgres://pg-mem/test';
+  for (const m of ['../server/lib/segments', '../server/lib/pg', '../server/lib/store', '../server/lib/accounts', '../server/lib/projects']) {
+    try { delete require.cache[require.resolve(m)]; } catch { /* not loaded */ }
+  }
+  const pg = require('../server/lib/pg');
+  pg.setPool(pool);
+  return {
+    pg,
+    store: require('../server/lib/store'),
+    accounts: require('../server/lib/accounts'),
+    projects: require('../server/lib/projects'),
+  };
+}
+
+test('Postgres backend runs the account + ownership flow (pg-mem)', async () => {
+  const mods = freshHostedPg();
+  assert.equal(mods.store.usePg, true, 'store selected the Postgres backend');
+  await mods.pg.init();
+  await accountFlow(mods);
+  delete process.env.DATABASE_URL;
+});
+
+test('Postgres backend runs the snapshot history flow (pg-mem)', async () => {
+  const mods = freshHostedPg();
+  await mods.pg.init();
+  await historyFlow(mods);
+  delete process.env.DATABASE_URL;
 });
 
 test('pub/sub bus delivers published updates to subscribers', () => {

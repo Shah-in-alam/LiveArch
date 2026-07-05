@@ -23,8 +23,8 @@ function tokenFrom(req) {
   try { return new URL(req.url).searchParams.get('token') || ''; } catch { return ''; }
 }
 
-/** Resolve the authenticated account for a request, or null. */
-function account(req) {
+/** Resolve the authenticated account for a request, or null (async). */
+async function account(req) {
   return resolveToken(bearer(req));
 }
 

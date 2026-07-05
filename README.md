@@ -290,7 +290,8 @@ More languages are planned — see [Roadmap](#roadmap).
 - [x] **Shareable public diagram URL** — self-host the [`server/`](server/) backend for a permanent URL (`livearch push`/`share`)
 - [x] **Team collaboration** — multiple devs see the same live diagram, synced live via SSE (`livearch share`)
 - [x] **Accounts & scoped tokens** — `livearch login` claims a handle; only that account can publish under it, with private projects and snapshot history
-- [ ] Managed SaaS — GitHub OAuth is wired but env-gated; a persistent multi-user datastore (Neon Postgres) and team membership are the remaining hosted work
+- [x] **Persistent datastore** — set `DATABASE_URL` to run on Neon Postgres instead of the filesystem (same API; auto-creates tables)
+- [ ] Managed SaaS — GitHub OAuth is wired but env-gated; team membership/roles are the remaining hosted work
 
 ---
 
@@ -481,7 +482,9 @@ livearch share <you>/<repo> --private --server http://localhost:3000
 ```
 Once you claim a handle with `login`, **only your account can publish under it** — pushes with another account's token are rejected (403). Each push also appends to a rolling **snapshot history**. Prefer real GitHub sign-in? Set `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` and visit `/api/auth/github` — see [`server/README.md`](server/README.md).
 
-This implements Phases 1–2 and most of Phase 3 of [`docs/BACKEND-DESIGN.md`](docs/BACKEND-DESIGN.md): permanent URL, live sync (SSE), accounts with scoped tokens, private projects, and snapshot history. A persistent multi-user datastore (Postgres) and team membership are the remaining hosted work.
+By default this stores everything on the filesystem — set `DATABASE_URL` (e.g. Neon, provisioned via the Vercel Marketplace) and it runs on **Postgres** instead, with no other changes (tables auto-create; schema in [`server/db/schema.sql`](server/db/schema.sql)).
+
+This implements Phases 1–3 of [`docs/BACKEND-DESIGN.md`](docs/BACKEND-DESIGN.md): permanent URL, live sync (SSE), accounts with scoped tokens, private projects, snapshot history, and a Postgres datastore. Team membership/roles are the remaining hosted work.
 
 ---
 
