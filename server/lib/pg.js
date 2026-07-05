@@ -86,6 +86,15 @@ async function init() {
       at BIGINT NOT NULL
     )`);
     await q(`CREATE INDEX IF NOT EXISTS idx_history_project ON snapshot_history (handle, slug, at DESC)`);
+    await q(`CREATE TABLE IF NOT EXISTS project_members (
+      handle TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      member_account_id TEXT NOT NULL,
+      member_handle TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      added_at BIGINT NOT NULL,
+      PRIMARY KEY (handle, slug, member_account_id)
+    )`);
   })();
   return _inited;
 }
@@ -277,26 +286,36 @@ async function authorizeWrite(handle, slug, token, opts = {}) {
 
   if (handleOwner) {
     const account = await resolveToken(token);
-    if (!account || account.id !== handleOwner) {
-      const e = new Error('this handle belongs to another account'); e.code = 'FORBIDDEN'; throw e;
+    if (!account) { const e = new Error('this handle belongs to another account'); e.code = 'FORBIDDEN'; throw e; }
+
+    if (account.id === handleOwner) {
+      const limits = planFor(account);
+      // Plan gate: private projects require a paid plan.
+      if (opts.private && !limits.privateProjects) {
+        const e = new Error('private projects require the Pro plan — run `livearch upgrade --plan pro`');
+        e.code = 'PLAN_REQUIRED'; throw e;
+      }
+      // Plan gate: cap the number of hosted projects on the Free plan.
+      if (!existed && (await countProjects(account.id)) >= limits.maxProjects) {
+        const e = new Error(`the ${limits.label} plan is limited to ${limits.maxProjects} hosted projects — run \`livearch upgrade --plan pro\``);
+        e.code = 'PLAN_LIMIT'; throw e;
+      }
+      const meta = (await getMeta(handle, slug)) || { createdAt: Date.now() };
+      meta.ownerAccountId = handleOwner;
+      if (opts.private !== undefined) meta.visibility = opts.private ? 'private' : 'public';
+      else if (!meta.visibility) meta.visibility = 'public';
+      await saveMeta(handle, slug, meta);
+      return { created: !existed, meta, account };
     }
-    const limits = planFor(account);
-    // Plan gate: private projects require a paid plan.
-    if (opts.private && !limits.privateProjects) {
-      const e = new Error('private projects require the Pro plan — run `livearch upgrade --plan pro`');
-      e.code = 'PLAN_REQUIRED'; throw e;
+
+    // Not the owner — a team member with write access may push to an existing project.
+    const role = await getMemberRole(handle, slug, account.id);
+    if (existed && (role === 'member' || role === 'owner')) {
+      const meta = await getMeta(handle, slug); // members don't change visibility
+      await saveMeta(handle, slug, meta);
+      return { created: false, meta, account, role };
     }
-    // Plan gate: cap the number of hosted projects on the Free plan.
-    if (!existed && (await countProjects(account.id)) >= limits.maxProjects) {
-      const e = new Error(`the ${limits.label} plan is limited to ${limits.maxProjects} hosted projects — run \`livearch upgrade --plan pro\``);
-      e.code = 'PLAN_LIMIT'; throw e;
-    }
-    const meta = (await getMeta(handle, slug)) || { createdAt: Date.now() };
-    meta.ownerAccountId = handleOwner;
-    if (opts.private !== undefined) meta.visibility = opts.private ? 'private' : 'public';
-    else if (!meta.visibility) meta.visibility = 'public';
-    await saveMeta(handle, slug, meta);
-    return { created: !existed, meta, account };
+    const e = new Error('this handle belongs to another account'); e.code = 'FORBIDDEN'; throw e;
   }
 
   let meta = await getMeta(handle, slug);
@@ -320,9 +339,49 @@ async function canRead(handle, slug, token) {
   if (meta.visibility === 'public') return true;
   if (meta.ownerAccountId) {
     const account = await resolveToken(token);
-    return !!(account && account.id === meta.ownerAccountId);
+    if (!account) return false;
+    if (account.id === meta.ownerAccountId) return true;
+    // team members (any role) can read a private project
+    return (await getMemberRole(handle, slug, account.id)) != null;
   }
   return !!(meta.ownerHash && meta.ownerHash === hash(token));
+}
+
+// --- team membership ------------------------------------------------------
+async function getMemberRole(handle, slug, accountId) {
+  const h = safeSeg(handle), s = safeSeg(slug);
+  if (!h || !s || !accountId) return null;
+  await init();
+  const { rows } = await q(`SELECT role FROM project_members WHERE handle=$1 AND slug=$2 AND member_account_id=$3`, [h, s, accountId]);
+  return rows.length ? rows[0].role : null;
+}
+
+async function addMember(handle, slug, member, role) {
+  const h = safeSeg(handle), s = safeSeg(slug);
+  if (!h || !s) throw new Error('invalid handle/slug');
+  await init();
+  await q(
+    `INSERT INTO project_members (handle, slug, member_account_id, member_handle, role, added_at)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (handle, slug, member_account_id) DO UPDATE SET role = EXCLUDED.role, member_handle = EXCLUDED.member_handle`,
+    [h, s, member.accountId, member.handle, role, Date.now()]
+  );
+}
+
+async function removeMember(handle, slug, memberAccountId) {
+  const h = safeSeg(handle), s = safeSeg(slug);
+  if (!h || !s) return false;
+  await init();
+  const { rows } = await q(`DELETE FROM project_members WHERE handle=$1 AND slug=$2 AND member_account_id=$3 RETURNING member_account_id`, [h, s, memberAccountId]);
+  return rows.length > 0;
+}
+
+async function listMembers(handle, slug) {
+  const h = safeSeg(handle), s = safeSeg(slug);
+  if (!h || !s) return [];
+  await init();
+  const { rows } = await q(`SELECT member_account_id, member_handle, role, added_at FROM project_members WHERE handle=$1 AND slug=$2 ORDER BY added_at ASC`, [h, s]);
+  return rows.map((r) => ({ accountId: r.member_account_id, handle: r.member_handle, role: r.role, addedAt: Number(r.added_at) }));
 }
 
 module.exports = {
@@ -332,4 +391,5 @@ module.exports = {
   issueToken, listTokens, revokeToken, findByProvider, validEmail,
   setPlan, countProjects,
   getMeta, saveMeta, authorizeWrite, canRead,
+  getMemberRole, addMember, removeMember, listMembers,
 };

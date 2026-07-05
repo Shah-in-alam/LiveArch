@@ -571,6 +571,44 @@ async function planFlow({ accounts, projects, store }) {
   await assert.rejects(() => accounts.setPlan(account.id, 'ultra'), (e) => e.code === 'BAD_PLAN');
 }
 
+async function teamFlow({ accounts, projects }) {
+  // A Team-plan owner with a private project.
+  const { account: owner, token: ownerTok } = await accounts.createAccount({ handle: 'org' });
+  await accounts.setPlan(owner.id, 'team');
+  await projects.authorizeWrite('org', 'app', ownerTok, { private: true });
+
+  const dev = await accounts.createAccount({ handle: 'dev' });
+  const guest = await accounts.createAccount({ handle: 'guest' });
+
+  // Before membership: outsiders can't write or read the private project.
+  await assert.rejects(() => projects.authorizeWrite('org', 'app', dev.token), (e) => e.code === 'FORBIDDEN');
+  assert.equal(await projects.canRead('org', 'app', dev.token), false);
+
+  // Owner invites dev (write) and guest (viewer).
+  await projects.addMember('org', 'app', { accountId: dev.account.id, handle: 'dev' }, 'member');
+  await projects.addMember('org', 'app', { accountId: guest.account.id, handle: 'guest' }, 'viewer');
+  assert.equal(await projects.getMemberRole('org', 'app', dev.account.id), 'member');
+  assert.equal((await projects.listMembers('org', 'app')).length, 2);
+
+  // Member can push to the existing project and read it.
+  const w = await projects.authorizeWrite('org', 'app', dev.token);
+  assert.equal(w.created, false);
+  assert.equal(w.role, 'member');
+  assert.equal(await projects.canRead('org', 'app', dev.token), true);
+
+  // Viewer can read the private project but cannot write.
+  assert.equal(await projects.canRead('org', 'app', guest.token), true);
+  await assert.rejects(() => projects.authorizeWrite('org', 'app', guest.token), (e) => e.code === 'FORBIDDEN');
+
+  // A member cannot create a NEW project under the owner's handle.
+  await assert.rejects(() => projects.authorizeWrite('org', 'brand-new', dev.token), (e) => e.code === 'FORBIDDEN');
+
+  // Removing dev revokes access.
+  assert.equal(await projects.removeMember('org', 'app', dev.account.id), true);
+  await assert.rejects(() => projects.authorizeWrite('org', 'app', dev.token), (e) => e.code === 'FORBIDDEN');
+  assert.equal(await projects.canRead('org', 'app', dev.token), false);
+}
+
 test('accounts: register, tokens, and handle ownership (filesystem)', async () => {
   await accountFlow(freshHosted('livearch-acct-'));
   delete process.env.LIVEARCH_DATA_DIR;
@@ -583,6 +621,11 @@ test('snapshot history is newest-first and capped (filesystem)', async () => {
 
 test('plan gating: private + project limits + upgrade (filesystem)', async () => {
   await planFlow(freshHosted('livearch-plan-'));
+  delete process.env.LIVEARCH_DATA_DIR;
+});
+
+test('team membership + roles (filesystem)', async () => {
+  await teamFlow(freshHosted('livearch-team-'));
   delete process.env.LIVEARCH_DATA_DIR;
 });
 
@@ -624,6 +667,13 @@ test('Postgres backend runs the plan gating flow (pg-mem)', async () => {
   const mods = freshHostedPg();
   await mods.pg.init();
   await planFlow(mods);
+  delete process.env.DATABASE_URL;
+});
+
+test('Postgres backend runs the team membership flow (pg-mem)', async () => {
+  const mods = freshHostedPg();
+  await mods.pg.init();
+  await teamFlow(mods);
   delete process.env.DATABASE_URL;
 });
 
