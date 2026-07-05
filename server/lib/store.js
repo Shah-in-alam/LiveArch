@@ -55,14 +55,14 @@ async function getSnapshotFs(handle, slug) {
 }
 
 /** Append a snapshot to the rolling history (newest first, capped per plan). */
-async function appendHistoryFs(handle, slug, arch, maxDepth) {
+async function appendHistoryFs(handle, slug, arch, maxDepth, branch) {
   const f = historyFile(handle, slug);
   if (!f) return;
   const cap = Math.min(Number.isFinite(maxDepth) && maxDepth > 0 ? maxDepth : HISTORY_MAX, HISTORY_MAX);
   let list = [];
   try { list = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { /* new / corrupt */ }
   if (!Array.isArray(list)) list = [];
-  list.unshift({ arch, at: Date.now() });
+  list.unshift({ arch, at: Date.now(), branch: branch || 'main' });
   if (list.length > cap) list.length = cap;
   try {
     fs.mkdirSync(path.dirname(f), { recursive: true });

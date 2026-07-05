@@ -544,6 +544,13 @@ async function historyFlow({ store }) {
     await store.appendHistory('me', 'small', { name: 'x', nodes: [{ id: 'h' + i }], edges: [] }, 5);
   }
   assert.equal((await store.getHistory('me', 'small')).length, 5, 'history capped to the given depth');
+
+  // branch is recorded on each history entry (default 'main', or as given)
+  await store.appendHistory('me', 'br', { name: 'x', nodes: [], edges: [] });            // default main
+  await store.appendHistory('me', 'br', { name: 'x', nodes: [], edges: [] }, 20, 'dev');  // branch dev
+  const brHist = await store.getHistory('me', 'br');
+  assert.equal(brHist[0].branch, 'dev', 'newest entry keeps its branch');
+  assert.equal(brHist[1].branch, 'main', 'default branch is main');
 }
 
 async function planFlow({ accounts, projects, store }) {
@@ -675,6 +682,41 @@ test('Postgres backend runs the team membership flow (pg-mem)', async () => {
   await mods.pg.init();
   await teamFlow(mods);
   delete process.env.DATABASE_URL;
+});
+
+test('server-side diff: selects snapshots by branch, revision, or default', () => {
+  const { resolveArchs, computeDiff } = require('../server/lib/diffs');
+  const arch = (ids) => ({ name: 'p', nodes: ids.map((id) => ({ id, label: id })), edges: [] });
+  // newest-first history across two branches
+  const history = [
+    { arch: arch(['a', 'b', 'c']), at: 300, branch: 'feature' },
+    { arch: arch(['a', 'b']),      at: 200, branch: 'main' },
+    { arch: arch(['a']),           at: 100, branch: 'main' },
+  ];
+
+  // default: latest vs previous push
+  let r = resolveArchs(history, {});
+  assert.equal(r.headLabel, 'latest');
+  assert.equal(r.baseLabel, 'previous');
+  assert.deepEqual(r.headArch.nodes.map((n) => n.id), ['a', 'b', 'c']);
+
+  // branch diff: main → feature
+  r = resolveArchs(history, { base: 'main', head: 'feature' });
+  assert.equal(r.baseLabel, 'main');
+  assert.equal(r.headLabel, 'feature');
+
+  // computeDiff: feature adds node "c" vs main
+  const d = computeDiff(history, { base: 'main', head: 'feature' });
+  assert.deepEqual(d.addedNodes.map((n) => n.id), ['c']);
+  assert.match(d.text, /Architecture diff: main → feature/);
+
+  // revision diff: 2 pushes back
+  r = resolveArchs(history, { steps: 2 });
+  assert.deepEqual(r.baseArch.nodes.map((n) => n.id), ['a']);
+
+  // unknown branch and empty history error out
+  assert.throws(() => resolveArchs(history, { base: 'nope', head: 'feature' }), (e) => e.code === 'REF_NOT_FOUND');
+  assert.throws(() => resolveArchs([], {}), (e) => e.code === 'NO_DATA');
 });
 
 test('billing: mode selection and Stripe webhook → plan mapping', () => {

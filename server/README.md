@@ -122,6 +122,7 @@ instructions; the register/token flow above works without it.
 | `POST /api/billing/upgrade` | Change the plan (`{ plan }`) — instant, or returns a Stripe Checkout URL |
 | `POST /api/billing/webhook` | Stripe webhook: applies the plan on `checkout.session.completed` |
 | `GET/POST/DELETE /api/projects/<h>/<s>/members` | List / invite / remove project members (Team plan) |
+| `GET /api/diff/<h>/<s>?base=&head=&steps=` | Diff two snapshots from history (branches or revisions) |
 | `GET /api/auth/github[/callback]` | Optional GitHub OAuth (env-gated) |
 | `GET /` | Landing page |
 

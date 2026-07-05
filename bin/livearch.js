@@ -56,7 +56,8 @@ const HELP = `
 ⬡  LiveArch — real-time architecture diagrams that live inside your repo
 
 Usage:  livearch [path] [options]
-        livearch diff <base-ref> [head-ref]     Compare architecture between two git refs
+        livearch diff <base-ref> [head-ref]     Compare architecture between two git refs (local)
+        livearch diff <handle>/<repo> --server  Compare hosted snapshots (--base/--head branch, --steps n)
         livearch badge [path] [--output file]   Write an SVG architecture badge for your README
         livearch login --handle <name>          Create a hosted account + save a token (also: whoami, logout)
         livearch upgrade --plan <pro|team>      Change your hosted account plan (free/pro/team)
@@ -295,6 +296,14 @@ function detectRepo(dir) {
   return { owner, name, url: `https://github.com/${owner}/${name}` };
 }
 
+/** Current git branch of a directory, or null. */
+function detectBranch(dir) {
+  try {
+    const b = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return b && b !== 'HEAD' ? b : null;
+  } catch { return null; }
+}
+
 /** Analyse a git ref by checking it out into a throwaway worktree. */
 function analyseRef(root, ref) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-diff-'));
@@ -313,11 +322,15 @@ function analyseRef(root, ref) {
 }
 
 function cmdDiff(args) {
+  // Hosted diff: `livearch diff <handle>/<repo> --server <url> [--base b] [--head h] [--steps n]`
+  if (args.includes('--server')) return cmdDiffHosted(args);
+
   const pos = args.filter((a) => !a.startsWith('-'));
   const base = pos[0];
   const head = pos[1]; // optional — defaults to the working tree
   if (!base) {
-    console.error('Usage: livearch diff <base-ref> [head-ref]');
+    console.error('Usage: livearch diff <base-ref> [head-ref]                  (local git refs)');
+    console.error('       livearch diff <handle>/<repo> --server <url>          (hosted history)');
     console.error('  e.g. livearch diff main            (compare main → working tree)');
     console.error('       livearch diff main feature/x  (compare two refs)');
     process.exit(1);
@@ -330,6 +343,41 @@ function cmdDiff(args) {
     console.log(formatDiff(diff, base, head || 'working tree'));
   } catch (e) {
     console.error('✗ ' + e.message);
+    process.exit(1);
+  }
+}
+
+/** Diff two snapshots stored on a hosted server (branches or revisions). */
+async function cmdDiffHosted(args) {
+  const server = parseServerFlag(args);
+  let base = '', head = '', steps = '', flagToken = '';
+  const pos = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--base') base = args[++i];
+    else if (args[i] === '--head') head = args[++i];
+    else if (args[i] === '--steps') steps = args[++i];
+    else if (args[i] === '--token') flagToken = args[++i];
+    else if (args[i] === '--server') i++;
+    else if (!args[i].startsWith('-')) pos.push(args[i]);
+  }
+  const target = pos[0];
+  if (!target || !target.includes('/')) {
+    console.error('Usage: livearch diff <handle>/<repo> --server <url> [--base <branch>] [--head <branch>] [--steps <n>]');
+    process.exit(1);
+  }
+  const [handle, slug] = target.split('/');
+  const token = resolveToken(server, flagToken);
+  const qs = new URLSearchParams();
+  if (base) qs.set('base', base);
+  if (head) qs.set('head', head);
+  if (steps) qs.set('steps', steps);
+  if (token) qs.set('token', token);
+  try {
+    const res = await apiGet(server, `/api/diff/${handle}/${slug}?${qs.toString()}`, token);
+    console.log(res.text);
+  } catch (e) {
+    console.error('✗ ' + e.message);
+    if (/409/.test(e.message)) console.error('  Push at least two snapshots first (e.g. on two branches).');
     process.exit(1);
   }
 }
@@ -357,24 +405,27 @@ async function cmdPush(args) {
   let token = '';
   let dir = process.cwd();
   let isPrivate = false;
+  let branch = '';
   const pos = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--server') server = args[++i].replace(/\/$/, '');
     else if (args[i] === '--token') token = args[++i];
     else if (args[i] === '--path') dir = path.resolve(args[++i]);
     else if (args[i] === '--private') isPrivate = true;
+    else if (args[i] === '--branch') branch = args[++i];
     else if (!args[i].startsWith('-')) pos.push(args[i]);
   }
   token = resolveToken(server, token); // flag → env → stored login
   const target = pos[0];
   if (!target || !target.includes('/')) {
-    console.error('Usage: livearch push <handle>/<repo> [--server <url>] [--token <t>] [--private]');
+    console.error('Usage: livearch push <handle>/<repo> [--server <url>] [--token <t>] [--private] [--branch <name>]');
     process.exit(1);
   }
   const [handle, slug] = target.split('/');
+  branch = branch || detectBranch(dir) || 'main';
   const arch = analyseDir(dir);
   try {
-    const data = await ingest(server, handle, slug, arch, token, isPrivate);
+    const data = await ingest(server, handle, slug, arch, token, isPrivate, branch);
     let url = `${server}/u/${handle}/${slug}`;
     console.log(`⬡  Pushed ${arch.nodes.length} nodes → ${url}`);
     if (data.visibility === 'private') {
@@ -392,13 +443,13 @@ async function cmdPush(args) {
 }
 
 /** POST an arch to a hosted server's ingest endpoint. Returns the parsed body. */
-async function ingest(server, handle, slug, arch, token, isPrivate) {
+async function ingest(server, handle, slug, arch, token, isPrivate, branch) {
   const headers = { 'content-type': 'application/json' };
   if (token) headers['authorization'] = 'Bearer ' + token; // account token
   const res = await fetch(server + '/api/ingest', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ handle, slug, arch, token, private: !!isPrivate }),
+    body: JSON.stringify({ handle, slug, arch, token, private: !!isPrivate, branch: branch || 'main' }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`${res.status}: ${data.error || 'push failed'}`);
@@ -614,21 +665,24 @@ function cmdShare(args) {
   let token = '';
   let dir = process.cwd();
   let isPrivate = false;
+  let branch = '';
   const pos = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--server') server = args[++i].replace(/\/$/, '');
     else if (args[i] === '--token') token = args[++i];
     else if (args[i] === '--path') dir = path.resolve(args[++i]);
     else if (args[i] === '--private') isPrivate = true;
+    else if (args[i] === '--branch') branch = args[++i];
     else if (!args[i].startsWith('-')) pos.push(args[i]);
   }
   token = resolveToken(server, token); // flag → env → stored login
   const target = pos[0];
   if (!target || !target.includes('/')) {
-    console.error('Usage: livearch share <handle>/<repo> [--server <url>] [--token <t>] [--private]');
+    console.error('Usage: livearch share <handle>/<repo> [--server <url>] [--token <t>] [--private] [--branch <name>]');
     process.exit(1);
   }
   const [handle, slug] = target.split('/');
+  branch = branch || detectBranch(dir) || 'main';
   const viewer = `${server}/u/${handle}/${slug}` + (isPrivate ? `?token=${encodeURIComponent(token)}` : '');
   const tracked = new Set();
   let pushing = false;
@@ -637,7 +691,7 @@ function cmdShare(args) {
     pushing = true;
     try {
       const arch = analyse(dir, [...tracked]);
-      await ingest(server, handle, slug, arch, token, isPrivate);
+      await ingest(server, handle, slug, arch, token, isPrivate, branch);
       const t = new Date().toLocaleTimeString();
       console.log(`  ↑ ${t}  pushed ${arch.nodes.length} nodes`);
     } catch (e) {
