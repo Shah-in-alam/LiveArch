@@ -1,6 +1,6 @@
-import { getSnapshot } from '../../../../lib/store';
-import { subscribe } from '../../../../lib/bus';
-import { canRead } from '../../../../lib/projects';
+import { getSnapshot } from '../../../../../lib/store';
+import { subscribe } from '../../../../../lib/bus';
+import { canRead } from '../../../../../lib/projects';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
