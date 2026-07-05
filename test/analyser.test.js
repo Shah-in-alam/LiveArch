@@ -627,6 +627,37 @@ test('Postgres backend runs the plan gating flow (pg-mem)', async () => {
   delete process.env.DATABASE_URL;
 });
 
+test('billing: mode selection and Stripe webhook → plan mapping', () => {
+  delete require.cache[require.resolve('../server/lib/billing')];
+  const billing = require('../server/lib/billing');
+
+  // mode() follows LIVEARCH_BILLING
+  delete process.env.LIVEARCH_BILLING;
+  assert.equal(billing.mode(), 'direct', 'default is direct (instant upgrade)');
+  process.env.LIVEARCH_BILLING = 'stripe';
+  assert.equal(billing.mode(), 'stripe');
+  delete process.env.LIVEARCH_BILLING;
+
+  // checkout.session.completed → the purchased plan (via metadata or client_reference_id)
+  assert.deepEqual(
+    billing.planChangeForEvent({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: 'a1', plan: 'pro' } } } }),
+    { accountId: 'a1', plan: 'pro' }
+  );
+  assert.deepEqual(
+    billing.planChangeForEvent({ type: 'checkout.session.completed', data: { object: { client_reference_id: 'a2', metadata: { plan: 'team' } } } }),
+    { accountId: 'a2', plan: 'team' }
+  );
+  // subscription cancelled → downgrade to free
+  assert.deepEqual(
+    billing.planChangeForEvent({ type: 'customer.subscription.deleted', data: { object: { metadata: { accountId: 'a3' } } } }),
+    { accountId: 'a3', plan: 'free' }
+  );
+  // unknown plan or unrelated event → no change
+  assert.equal(billing.planChangeForEvent({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: 'a4', plan: 'ultra' } } } }), null);
+  assert.equal(billing.planChangeForEvent({ type: 'invoice.paid', data: { object: {} } }), null);
+  assert.equal(billing.planChangeForEvent(null), null);
+});
+
 test('pub/sub bus delivers published updates to subscribers', () => {
   const { publish, subscribe } = require('../server/lib/bus');
   const got = [];

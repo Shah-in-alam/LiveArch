@@ -521,6 +521,14 @@ async function cmdUpgrade(args) {
   if (!token) { console.error(`Not logged in to ${server}. Run: livearch login --handle <you> --server ${server}`); process.exit(1); }
   try {
     const res = await apiJson(server, 'POST', '/api/billing/upgrade', { plan }, token);
+    // Stripe mode: the server returns a hosted checkout URL to pay at.
+    if (res.checkout && res.checkoutUrl) {
+      console.log(`⬡  Complete your upgrade to ${String(plan).toUpperCase()} — pay securely at:`);
+      console.log(`   ${res.checkoutUrl}`);
+      console.log('   Your plan activates automatically once payment completes.');
+      openBrowser(res.checkoutUrl);
+      return;
+    }
     console.log(`⬡  You're now on the ${String(res.plan).toUpperCase()} plan${res.price ? ` (€${res.price}/mo)` : ''} → ${server}`);
     if (res.limits) {
       const max = res.limits.maxProjects == null || res.limits.maxProjects > 1e9 ? 'unlimited' : res.limits.maxProjects;
@@ -528,7 +536,7 @@ async function cmdUpgrade(args) {
     }
   } catch (e) {
     console.error(`✗ upgrade failed: ${e.message}`);
-    if (/501/.test(e.message)) console.error('  This server routes upgrades through Stripe checkout (LIVEARCH_BILLING=stripe).');
+    if (/501/.test(e.message)) console.error('  Stripe billing is enabled but not fully configured (STRIPE_SECRET_KEY / STRIPE_PRICE_*).');
     process.exit(1);
   }
 }

@@ -64,9 +64,23 @@ Accounts have a plan — **Free** (default), **Pro**, or **Team** — defined in
 
 A gated push returns **402** (`PLAN_REQUIRED` / `PLAN_LIMIT`) and the CLI prints an
 upgrade hint. Change plan with `livearch upgrade --plan pro` (→ `POST
-/api/billing/upgrade`). In this build the upgrade is immediate; set
-`LIVEARCH_BILLING=stripe` to have that endpoint hand off to Stripe checkout
-instead (returns `501` until wired).
+/api/billing/upgrade`).
+
+**Billing.** By default (`LIVEARCH_BILLING` unset) `upgrade` applies the plan
+immediately — the self-host / dev stand-in. To take real payments, enable Stripe:
+
+```bash
+cd server && npm install stripe
+# set in .env.local (see .env.example):
+#   LIVEARCH_BILLING=stripe
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_PRO, STRIPE_PRICE_TEAM
+```
+
+Then `livearch upgrade --plan pro` returns a Stripe Checkout URL (the CLI opens
+it); after payment, Stripe calls `POST /api/billing/webhook`
+(`checkout.session.completed`) and the plan is applied. Cancellations
+(`customer.subscription.deleted`) downgrade to Free. The webhook→plan mapping is
+unit-tested; live Checkout needs your Stripe keys.
 
 ### Sign in with GitHub (optional)
 
@@ -86,7 +100,8 @@ instructions; the register/token flow above works without it.
 | `POST /api/auth/register` | Create an account, claim a handle, return a token |
 | `GET /api/auth/whoami` | Resolve the bearer token to its account |
 | `GET/POST/DELETE /api/auth/tokens` | List / issue / revoke this account's tokens |
-| `POST /api/billing/upgrade` | Change the account's plan (`{ plan }`); Stripe-ready |
+| `POST /api/billing/upgrade` | Change the plan (`{ plan }`) — instant, or returns a Stripe Checkout URL |
+| `POST /api/billing/webhook` | Stripe webhook: applies the plan on `checkout.session.completed` |
 | `GET /api/auth/github[/callback]` | Optional GitHub OAuth (env-gated) |
 | `GET /` | Landing page |
 
