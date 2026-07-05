@@ -11,7 +11,7 @@ export async function GET(req, { params }) {
   const { handle, slug } = params;
   const token = new URL(req.url).searchParams.get('token') || '';
 
-  if (!canRead(handle, slug, token)) {
+  if (!(await canRead(handle, slug, token))) {
     return new Response(
       `<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;padding:40px">` +
       `<h1>⬡ LiveArch</h1><p>This diagram is <b>private</b>. Append a valid <code>?token=…</code> to view it.</p>`,
@@ -19,7 +19,7 @@ export async function GET(req, { params }) {
     );
   }
 
-  const snap = getSnapshot(handle, slug);
+  const snap = await getSnapshot(handle, slug);
   if (!snap) {
     return new Response(
       `<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;padding:40px">` +

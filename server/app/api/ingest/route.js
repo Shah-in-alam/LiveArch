@@ -32,8 +32,8 @@ export async function POST(req) {
     return Response.json({ error: e.message }, { status: 400 });
   }
 
-  saveSnapshot(handle, slug, arch);
-  appendHistory(handle, slug, arch);
+  await saveSnapshot(handle, slug, arch);
+  await appendHistory(handle, slug, arch);
   publish(handle + '/' + slug, { arch });
   return Response.json({ ok: true, url: `/u/${handle}/${slug}`, nodes: arch.nodes.length, visibility: meta.visibility });
 }

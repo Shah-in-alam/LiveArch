@@ -81,14 +81,33 @@ Redis pub/sub (see the design doc).
 
 ## Storage
 
-A filesystem JSON store under `server/.data/` (see `lib/store.js`,
-`lib/accounts.js`): snapshots + `.history.json` per project, and `_accounts/`,
-`_tokens/`, `_handles/` for accounts. The shape mirrors the Postgres data model
-in the design doc, so swapping `store.js`/`accounts.js` for Neon Postgres is a
-drop-in — the routes and CLI don't change.
+Two interchangeable backends behind one async API, chosen at startup:
 
-## Deploy (later)
+**Filesystem (default)** — JSON under `server/.data/`: snapshots +
+`.history.json` per project, and `_accounts/`, `_tokens/`, `_handles/` for
+accounts. Zero setup; great for `next dev` and small self-hosting.
 
-This is a standard Next.js app and deploys to Vercel as-is, but the filesystem
-store is ephemeral on serverless — wire up a real datastore first (see the
-design doc).
+**Postgres / Neon** — set `DATABASE_URL` and the server uses Postgres instead
+(`lib/pg.js`, driver `@neondatabase/serverless`). Tables are created
+automatically on first use; the canonical schema is [`db/schema.sql`](db/schema.sql).
+
+```bash
+# Provision Neon via the Vercel Marketplace (injects DATABASE_URL automatically):
+vercel integration add neon
+vercel env pull .env.local        # then `npm run dev` picks it up
+
+# …or point at any Postgres/Neon connection string:
+echo 'DATABASE_URL=postgres://user:pass@host/db?sslmode=require' >> .env.local
+```
+
+Both backends implement the same operations, so switching changes nothing else.
+The filesystem layout is deliberately Postgres-shaped (see `db/schema.sql`).
+Copy [`.env.example`](.env.example) to `.env.local` for the full list of env vars.
+
+## Deploy
+
+This is a standard Next.js app and deploys to Vercel as-is. The filesystem store
+is ephemeral on serverless, so set `DATABASE_URL` (Neon) in production — the
+Postgres backend then persists snapshots, accounts, and history. Provision Neon
+through the Vercel Marketplace so the env var is injected into the deployment
+automatically.

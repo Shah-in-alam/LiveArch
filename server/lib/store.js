@@ -1,34 +1,41 @@
 'use strict';
 
 /**
- * store.js — snapshot storage for the LiveArch hosted MVP.
+ * store.js — snapshot storage for the hosted server.
  *
- * Phase 1 uses a simple filesystem JSON store (one file per project). This
- * works out of the box for `next dev` and small self-hosting. For production
- * on Vercel, swap these two functions for Neon Postgres / Vercel Blob (the
- * rest of the app doesn't care where snapshots live) — see docs/BACKEND-DESIGN.md.
+ * Two backends, chosen at load time:
+ *   - Postgres (Neon) when DATABASE_URL is set — see pg.js.
+ *   - Filesystem JSON under DATA_DIR otherwise (great for `next dev` and small
+ *     self-hosting).
+ *
+ * Both expose the same async API, so routes/CLI don't care which is active.
+ * The filesystem layout is Postgres-shaped, so swapping backends changes
+ * nothing else — see docs/BACKEND-DESIGN.md.
  */
 
 const fs = require('fs');
 const path = require('path');
+const { safeSeg } = require('./segments');
 
 const DATA_DIR = process.env.LIVEARCH_DATA_DIR || path.join(__dirname, '..', '.data');
-
-/** Restrict to safe path segments (no traversal). Returns null if invalid. */
-function safeSeg(s) {
-  if (typeof s !== 'string') return null;
-  const v = s.trim().toLowerCase();
-  return /^[a-z0-9._-]{1,64}$/.test(v) ? v : null;
-}
+const HISTORY_MAX = 20;
+const usePg = !!(process.env.DATABASE_URL || process.env.POSTGRES_URL);
 
 function fileFor(handle, slug) {
   const h = safeSeg(handle), s = safeSeg(slug);
   if (!h || !s) return null;
   return path.join(DATA_DIR, h, s + '.json');
 }
+function historyFile(handle, slug) {
+  const h = safeSeg(handle), s = safeSeg(slug);
+  if (!h || !s) return null;
+  return path.join(DATA_DIR, h, s + '.history.json');
+}
+
+// --- filesystem backend (async wrappers over sync fs) --------------------
 
 /** Persist the latest snapshot for handle/slug. Returns { handle, slug }. */
-function saveSnapshot(handle, slug, arch) {
+async function saveSnapshotFs(handle, slug, arch) {
   const f = fileFor(handle, slug);
   if (!f) throw new Error('invalid handle/slug');
   fs.mkdirSync(path.dirname(f), { recursive: true });
@@ -37,30 +44,14 @@ function saveSnapshot(handle, slug, arch) {
 }
 
 /** Read the latest snapshot for handle/slug, or null. */
-function getSnapshot(handle, slug) {
+async function getSnapshotFs(handle, slug) {
   const f = fileFor(handle, slug);
   if (!f) return null;
-  try {
-    return JSON.parse(fs.readFileSync(f, 'utf8'));
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; }
 }
 
-const HISTORY_MAX = 20;
-
-function historyFile(handle, slug) {
-  const h = safeSeg(handle), s = safeSeg(slug);
-  if (!h || !s) return null;
-  return path.join(DATA_DIR, h, s + '.history.json');
-}
-
-/**
- * Append a snapshot to the project's rolling history (newest first, capped at
- * HISTORY_MAX). History powers server-side diff and "how architecture changed
- * over time" (Phase 3). Best-effort — never throws into the write path.
- */
-function appendHistory(handle, slug, arch) {
+/** Append a snapshot to the rolling history (newest first, capped). */
+async function appendHistoryFs(handle, slug, arch) {
   const f = historyFile(handle, slug);
   if (!f) return;
   let list = [];
@@ -75,15 +66,28 @@ function appendHistory(handle, slug, arch) {
 }
 
 /** Read the project's snapshot history (newest first), or []. */
-function getHistory(handle, slug) {
+async function getHistoryFs(handle, slug) {
   const f = historyFile(handle, slug);
   if (!f) return [];
   try {
     const list = JSON.parse(fs.readFileSync(f, 'utf8'));
     return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
-module.exports = { saveSnapshot, getSnapshot, appendHistory, getHistory, HISTORY_MAX, DATA_DIR, safeSeg };
+// --- backend selection ----------------------------------------------------
+let api;
+if (usePg) {
+  const pg = require('./pg');
+  api = {
+    saveSnapshot: pg.saveSnapshot, getSnapshot: pg.getSnapshot,
+    appendHistory: pg.appendHistory, getHistory: pg.getHistory,
+  };
+} else {
+  api = {
+    saveSnapshot: saveSnapshotFs, getSnapshot: getSnapshotFs,
+    appendHistory: appendHistoryFs, getHistory: getHistoryFs,
+  };
+}
+
+module.exports = { ...api, HISTORY_MAX, DATA_DIR, safeSeg, usePg };
