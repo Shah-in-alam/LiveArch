@@ -293,7 +293,8 @@ More languages are planned — see [Roadmap](#roadmap).
 - [x] **Persistent datastore** — set `DATABASE_URL` to run on Neon Postgres instead of the filesystem (same API; auto-creates tables)
 - [x] **Plan tiers with gating** — Free/Pro/Team; private projects, project count, and history depth are enforced server-side (`livearch upgrade`)
 - [x] **Stripe billing** — `LIVEARCH_BILLING=stripe` routes upgrades through Stripe Checkout; a webhook applies the plan (falls back to instant upgrade for self-host)
-- [ ] Managed SaaS — team membership/roles and going-live GitHub OAuth are the remaining hosted work
+- [x] **Team membership & roles** — Team-plan owners invite accounts to a project as `member` (read+write) or `viewer` (read private); enforced in push/read (`livearch team`)
+- [ ] Managed SaaS — going-live GitHub OAuth (needs an OAuth app) is the last remaining hosted piece
 
 ---
 
@@ -369,6 +370,7 @@ LiveArch has one default command (watch) plus a few subcommands:
 | `livearch login --handle <name>` | Create a hosted account, claim `<name>`, and save a token (`--server <url>`) |
 | `livearch whoami` / `livearch logout` | Show / clear the saved hosted login (whoami shows your plan) |
 | `livearch upgrade --plan <pro\|team>` | Change your account plan (unlocks private projects + unlimited) |
+| `livearch team add <handle>/<repo> <user>` | Invite a teammate to a project (Team plan; also `team`, `team remove`) |
 | `livearch push <handle>/<repo>` | Publish the architecture to a hosted server (permanent URL) |
 | `livearch share <handle>/<repo>` | Watch + publish on every save (viewers update live via SSE) |
 | `livearch --help` | Show help |

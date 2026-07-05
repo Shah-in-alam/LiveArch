@@ -82,6 +82,25 @@ it); after payment, Stripe calls `POST /api/billing/webhook`
 (`customer.subscription.deleted`) downgrade to Free. The webhook→plan mapping is
 unit-tested; live Checkout needs your Stripe keys.
 
+### Team membership & roles (Team plan)
+
+A **Team**-plan owner can invite other accounts to one of their projects:
+
+```bash
+livearch team add me/app teammate --role member   # read + write
+livearch team add me/app viewer1  --role viewer   # read (incl. private) only
+livearch team me/app                              # list members
+livearch team remove me/app teammate
+```
+
+- A **member** may `push` to that (existing) project and read it even when
+  private; a **viewer** may only read a private project. Neither can create new
+  projects under the owner's handle or manage members.
+- Inviting requires the owner to be on the **Team** plan (else `402`), and the
+  invitee must have logged in once (so their handle resolves to an account).
+- Enforced in `projects.authorizeWrite` / `canRead` on both backends. API:
+  `GET/POST/DELETE /api/projects/<handle>/<slug>/members`.
+
 ### Sign in with GitHub (optional)
 
 Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (OAuth app callback:
@@ -102,6 +121,7 @@ instructions; the register/token flow above works without it.
 | `GET/POST/DELETE /api/auth/tokens` | List / issue / revoke this account's tokens |
 | `POST /api/billing/upgrade` | Change the plan (`{ plan }`) — instant, or returns a Stripe Checkout URL |
 | `POST /api/billing/webhook` | Stripe webhook: applies the plan on `checkout.session.completed` |
+| `GET/POST/DELETE /api/projects/<h>/<s>/members` | List / invite / remove project members (Team plan) |
 | `GET /api/auth/github[/callback]` | Optional GitHub OAuth (env-gated) |
 | `GET /` | Landing page |
 

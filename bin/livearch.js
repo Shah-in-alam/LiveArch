@@ -60,6 +60,7 @@ Usage:  livearch [path] [options]
         livearch badge [path] [--output file]   Write an SVG architecture badge for your README
         livearch login --handle <name>          Create a hosted account + save a token (also: whoami, logout)
         livearch upgrade --plan <pro|team>      Change your hosted account plan (free/pro/team)
+        livearch team add <handle>/<repo> <u>   Manage project members (Team plan; also: team, team remove)
         livearch push <handle>/<repo>           Publish the diagram to a hosted server (permanent URL)
         livearch share <handle>/<repo>          Watch + push on every save (hosted viewers update live)
 
@@ -94,6 +95,7 @@ function main() {
   if (raw[0] === 'logout') return cmdLogout(raw.slice(1));
   if (raw[0] === 'whoami') return cmdWhoami(raw.slice(1));
   if (raw[0] === 'upgrade') return cmdUpgrade(raw.slice(1));
+  if (raw[0] === 'team') return cmdTeam(raw.slice(1));
 
   const opts = parseArgs(raw);
   if (opts.help) {
@@ -537,6 +539,53 @@ async function cmdUpgrade(args) {
   } catch (e) {
     console.error(`✗ upgrade failed: ${e.message}`);
     if (/501/.test(e.message)) console.error('  Stripe billing is enabled but not fully configured (STRIPE_SECRET_KEY / STRIPE_PRICE_*).');
+    process.exit(1);
+  }
+}
+
+async function cmdTeam(args) {
+  const server = parseServerFlag(args);
+  let role = 'member', flagToken = '';
+  const pos = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--role') role = args[++i];
+    else if (args[i] === '--token') flagToken = args[++i];
+    else if (args[i] === '--server') i++;
+    else if (!args[i].startsWith('-')) pos.push(args[i]);
+  }
+  let action = 'list';
+  if (pos[0] === 'add' || pos[0] === 'remove' || pos[0] === 'list') action = pos.shift();
+  const target = pos[0];
+  const memberHandle = pos[1];
+  if (!target || !target.includes('/')) {
+    console.error('Usage: livearch team <handle>/<repo>                       list members');
+    console.error('       livearch team add <handle>/<repo> <user> [--role member|viewer]');
+    console.error('       livearch team remove <handle>/<repo> <user>');
+    process.exit(1);
+  }
+  const [handle, slug] = target.split('/');
+  const token = resolveToken(server, flagToken);
+  if (!token) { console.error(`Not logged in to ${server}. Run: livearch login --handle <you> --server ${server}`); process.exit(1); }
+  const base = `/api/projects/${handle}/${slug}/members`;
+  try {
+    if (action === 'add') {
+      if (!memberHandle) { console.error('Usage: livearch team add <handle>/<repo> <user> [--role member|viewer]'); process.exit(1); }
+      const res = await apiJson(server, 'POST', base, { handle: memberHandle, role }, token);
+      console.log(`⬡  Added ${res.member} as ${res.role} on ${target}`);
+    } else if (action === 'remove') {
+      if (!memberHandle) { console.error('Usage: livearch team remove <handle>/<repo> <user>'); process.exit(1); }
+      await apiJson(server, 'DELETE', base, { handle: memberHandle }, token);
+      console.log(`⬡  Removed ${memberHandle} from ${target}`);
+    } else {
+      const res = await apiGet(server, base, token);
+      console.log(`⬡  Team for ${target}:`);
+      console.log(`   ${handle} (owner)`);
+      for (const m of res.members || []) console.log(`   ${m.handle} (${m.role})`);
+      if (!res.members || !res.members.length) console.log('   (no members yet — livearch team add ' + target + ' <user>)');
+    }
+  } catch (e) {
+    console.error(`✗ ${e.message}`);
+    if (/^402/.test(e.message)) console.error('  Team members need the Team plan:  livearch upgrade --plan team --server ' + server);
     process.exit(1);
   }
 }

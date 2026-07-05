@@ -49,3 +49,13 @@ CREATE TABLE IF NOT EXISTS snapshot_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_history_project ON snapshot_history (handle, slug, at DESC);
+
+CREATE TABLE IF NOT EXISTS project_members (
+  handle            TEXT NOT NULL,
+  slug              TEXT NOT NULL,
+  member_account_id TEXT NOT NULL,
+  member_handle     TEXT NOT NULL,
+  role              TEXT NOT NULL DEFAULT 'member',  -- 'member' (read+write) | 'viewer' (read)
+  added_at          BIGINT NOT NULL,
+  PRIMARY KEY (handle, slug, member_account_id)
+);
