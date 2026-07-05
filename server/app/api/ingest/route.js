@@ -2,6 +2,7 @@ import { saveSnapshot, appendHistory } from '../../../lib/store';
 import { authorizeWrite } from '../../../lib/projects';
 import { publish } from '../../../lib/bus';
 import { bearer } from '../../../lib/auth';
+import { planFor } from '../../../lib/plans';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,16 +25,20 @@ export async function POST(req) {
     return Response.json({ error: 'handle, slug, and a valid arch are required' }, { status: 400 });
   }
 
-  let meta;
+  let meta, account;
   try {
-    ({ meta } = await authorizeWrite(handle, slug, token, { private: body.private }));
+    ({ meta, account } = await authorizeWrite(handle, slug, token, { private: body.private }));
   } catch (e) {
     if (e.code === 'FORBIDDEN') return Response.json({ error: e.message, code: 'FORBIDDEN' }, { status: 403 });
+    // Plan limits → 402 Payment Required, so the CLI can prompt an upgrade.
+    if (e.code === 'PLAN_REQUIRED' || e.code === 'PLAN_LIMIT') {
+      return Response.json({ error: e.message, code: e.code }, { status: 402 });
+    }
     return Response.json({ error: e.message }, { status: 400 });
   }
 
   await saveSnapshot(handle, slug, arch);
-  await appendHistory(handle, slug, arch);
+  await appendHistory(handle, slug, arch, planFor(account).historyDepth);
   publish(handle + '/' + slug, { arch });
-  return Response.json({ ok: true, url: `/u/${handle}/${slug}`, nodes: arch.nodes.length, visibility: meta.visibility });
+  return Response.json({ ok: true, url: `/u/${handle}/${slug}`, nodes: arch.nodes.length, visibility: meta.visibility, plan: account ? account.plan : null });
 }

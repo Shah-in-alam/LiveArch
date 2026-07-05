@@ -15,8 +15,9 @@
 
 const crypto = require('crypto');
 const { safeSeg } = require('./segments');
+const { planFor, isPlan, DEFAULT_PLAN } = require('./plans');
 
-const HISTORY_MAX = 20;
+const HISTORY_MAX = 50; // global hard cap; per-plan depth is applied on top
 
 let _pool = null;
 
@@ -49,8 +50,11 @@ async function init() {
       email TEXT,
       provider TEXT NOT NULL DEFAULT 'token',
       provider_id TEXT,
+      plan TEXT NOT NULL DEFAULT 'free',
       created_at BIGINT NOT NULL
     )`);
+    // Add `plan` to accounts created before this column existed (idempotent).
+    try { await q(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free'`); } catch { /* older engines / pg-mem */ }
     await q(`CREATE TABLE IF NOT EXISTS api_tokens (
       token_hash TEXT PRIMARY KEY,
       account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -93,7 +97,7 @@ function validEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 function rowToAccount(r) {
-  return r ? { id: r.id, handle: r.handle, email: r.email, provider: r.provider, providerId: r.provider_id, createdAt: Number(r.created_at) } : null;
+  return r ? { id: r.id, handle: r.handle, email: r.email, provider: r.provider, providerId: r.provider_id, plan: r.plan || DEFAULT_PLAN, createdAt: Number(r.created_at) } : null;
 }
 
 // --- snapshots ------------------------------------------------------------
@@ -119,18 +123,19 @@ async function getSnapshot(handle, slug) {
   return { arch, updatedAt: Number(rows[0].updated_at) };
 }
 
-async function appendHistory(handle, slug, arch) {
+async function appendHistory(handle, slug, arch, maxDepth) {
   const h = safeSeg(handle), s = safeSeg(slug);
   if (!h || !s) return;
   await init();
+  const cap = Math.min(Number.isFinite(maxDepth) && maxDepth > 0 ? maxDepth : HISTORY_MAX, HISTORY_MAX);
   await q(`INSERT INTO snapshot_history (handle, slug, arch, at) VALUES ($1,$2,$3,$4)`,
     [h, s, JSON.stringify(arch), Date.now()]);
-  // Trim to the newest HISTORY_MAX for this project.
+  // Trim to the newest `cap` for this project (plan-dependent).
   await q(
     `DELETE FROM snapshot_history WHERE handle=$1 AND slug=$2 AND id NOT IN (
        SELECT id FROM snapshot_history WHERE handle=$1 AND slug=$2 ORDER BY at DESC, id DESC LIMIT $3
      )`,
-    [h, s, HISTORY_MAX]
+    [h, s, cap]
   );
 }
 
@@ -207,10 +212,26 @@ async function createAccount({ handle, email, provider = 'token', providerId = n
   if (await getHandleOwner(h)) { const e = new Error(`handle "${h}" is already taken`); e.code = 'HANDLE_TAKEN'; throw e; }
   const id = crypto.randomBytes(12).toString('hex');
   const createdAt = Date.now();
-  await q(`INSERT INTO accounts (id, handle, email, provider, provider_id, created_at) VALUES ($1,$2,$3,$4,$5,$6)`,
-    [id, h, email || null, provider, providerId, createdAt]);
+  await q(`INSERT INTO accounts (id, handle, email, provider, provider_id, plan, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [id, h, email || null, provider, providerId, DEFAULT_PLAN, createdAt]);
   const token = await issueToken(id, 'cli');
-  return { account: { id, handle: h, email: email || null, provider, providerId, createdAt }, token };
+  return { account: { id, handle: h, email: email || null, provider, providerId, plan: DEFAULT_PLAN, createdAt }, token };
+}
+
+/** Change an account's plan. Returns the updated account, or null. */
+async function setPlan(accountId, plan) {
+  if (!isPlan(plan)) { const e = new Error('unknown plan: ' + plan); e.code = 'BAD_PLAN'; throw e; }
+  await init();
+  const { rows } = await q(`UPDATE accounts SET plan=$1 WHERE id=$2 RETURNING *`, [plan, accountId]);
+  return rowToAccount(rows[0]);
+}
+
+/** Count projects owned by an account (for plan limits). */
+async function countProjects(accountId) {
+  if (!accountId) return 0;
+  await init();
+  const { rows } = await q(`SELECT COUNT(*)::int AS n FROM projects WHERE owner_account_id=$1`, [accountId]);
+  return rows.length ? Number(rows[0].n) : 0;
 }
 
 async function findByProvider(provider, providerId) {
@@ -259,6 +280,17 @@ async function authorizeWrite(handle, slug, token, opts = {}) {
     if (!account || account.id !== handleOwner) {
       const e = new Error('this handle belongs to another account'); e.code = 'FORBIDDEN'; throw e;
     }
+    const limits = planFor(account);
+    // Plan gate: private projects require a paid plan.
+    if (opts.private && !limits.privateProjects) {
+      const e = new Error('private projects require the Pro plan — run `livearch upgrade --plan pro`');
+      e.code = 'PLAN_REQUIRED'; throw e;
+    }
+    // Plan gate: cap the number of hosted projects on the Free plan.
+    if (!existed && (await countProjects(account.id)) >= limits.maxProjects) {
+      const e = new Error(`the ${limits.label} plan is limited to ${limits.maxProjects} hosted projects — run \`livearch upgrade --plan pro\``);
+      e.code = 'PLAN_LIMIT'; throw e;
+    }
     const meta = (await getMeta(handle, slug)) || { createdAt: Date.now() };
     meta.ownerAccountId = handleOwner;
     if (opts.private !== undefined) meta.visibility = opts.private ? 'private' : 'public';
@@ -298,5 +330,6 @@ module.exports = {
   saveSnapshot, getSnapshot, appendHistory, getHistory,
   createAccount, resolveToken, getAccount, getHandleOwner,
   issueToken, listTokens, revokeToken, findByProvider, validEmail,
+  setPlan, countProjects,
   getMeta, saveMeta, authorizeWrite, canRead,
 };

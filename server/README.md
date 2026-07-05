@@ -50,6 +50,24 @@ livearch push me/app --private --server http://localhost:3000   # account-locked
 - **Legacy / anonymous** still works: an unclaimed handle falls back to the
   per-project `--token` model (or open, no token) — handy for quick local dev.
 
+### Plans & gating (Phase 3 monetisation)
+
+Accounts have a plan — **Free** (default), **Pro**, or **Team** — defined in
+[`lib/plans.js`](lib/plans.js). Limits are enforced server-side at the write path:
+
+| | Free | Pro | Team |
+|---|---|---|---|
+| Hosted projects | 3 | unlimited | unlimited |
+| Private projects | ✗ | ✓ | ✓ |
+| Snapshot history | 5 | 20 | 50 |
+| Teams | ✗ | ✗ | ✓ |
+
+A gated push returns **402** (`PLAN_REQUIRED` / `PLAN_LIMIT`) and the CLI prints an
+upgrade hint. Change plan with `livearch upgrade --plan pro` (→ `POST
+/api/billing/upgrade`). In this build the upgrade is immediate; set
+`LIVEARCH_BILLING=stripe` to have that endpoint hand off to Stripe checkout
+instead (returns `501` until wired).
+
 ### Sign in with GitHub (optional)
 
 Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (OAuth app callback:
@@ -68,6 +86,7 @@ instructions; the register/token flow above works without it.
 | `POST /api/auth/register` | Create an account, claim a handle, return a token |
 | `GET /api/auth/whoami` | Resolve the bearer token to its account |
 | `GET/POST/DELETE /api/auth/tokens` | List / issue / revoke this account's tokens |
+| `POST /api/billing/upgrade` | Change the account's plan (`{ plan }`); Stripe-ready |
 | `GET /api/auth/github[/callback]` | Optional GitHub OAuth (env-gated) |
 | `GET /` | Landing page |
 

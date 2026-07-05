@@ -59,6 +59,7 @@ Usage:  livearch [path] [options]
         livearch diff <base-ref> [head-ref]     Compare architecture between two git refs
         livearch badge [path] [--output file]   Write an SVG architecture badge for your README
         livearch login --handle <name>          Create a hosted account + save a token (also: whoami, logout)
+        livearch upgrade --plan <pro|team>      Change your hosted account plan (free/pro/team)
         livearch push <handle>/<repo>           Publish the diagram to a hosted server (permanent URL)
         livearch share <handle>/<repo>          Watch + push on every save (hosted viewers update live)
 
@@ -92,6 +93,7 @@ function main() {
   if (raw[0] === 'login') return cmdLogin(raw.slice(1));
   if (raw[0] === 'logout') return cmdLogout(raw.slice(1));
   if (raw[0] === 'whoami') return cmdWhoami(raw.slice(1));
+  if (raw[0] === 'upgrade') return cmdUpgrade(raw.slice(1));
 
   const opts = parseArgs(raw);
   if (opts.help) {
@@ -378,7 +380,9 @@ async function cmdPush(args) {
     }
   } catch (e) {
     console.error(`✗ push failed: ${e.message}`);
-    if (/^0/.test(e.message) || /fetch failed|ECONN/.test(e.message)) {
+    if (/^402/.test(e.message)) {
+      console.error('  Upgrade your plan:  livearch upgrade --plan pro --server ' + server);
+    } else if (/^0/.test(e.message) || /fetch failed|ECONN/.test(e.message)) {
       console.error('  Is the server running?  (cd server && npm run dev)');
     }
     process.exit(1);
@@ -480,13 +484,51 @@ function cmdLogout(args) {
 
 async function cmdWhoami(args) {
   const server = parseServerFlag(args);
-  const token = resolveToken(server, '');
+  let flagToken = '';
+  for (let i = 0; i < args.length; i++) { if (args[i] === '--token') flagToken = args[++i]; else if (args[i] === '--server') i++; }
+  const token = resolveToken(server, flagToken);
   if (!token) { console.log(`Not logged in to ${server}`); return; }
   try {
     const who = await apiGet(server, '/api/auth/whoami', token);
+    const plan = who.plan || 'free';
     console.log(`⬡  ${who.handle}${who.email ? ' <' + who.email + '>' : ''}  (via ${who.provider}) → ${server}`);
+    console.log(`   Plan: ${plan.toUpperCase()}`);
+    if (who.limits) {
+      const max = who.limits.maxProjects === null || who.limits.maxProjects > 1e9 ? 'unlimited' : who.limits.maxProjects;
+      console.log(`   Projects: up to ${max} · history: ${who.limits.historyDepth} snapshots · private: ${who.limits.privateProjects ? 'yes' : 'no'}`);
+    }
+    if (plan === 'free') console.log('   Upgrade for private projects + unlimited: livearch upgrade --plan pro');
   } catch (e) {
     console.error(`✗ ${e.message}`);
+    process.exit(1);
+  }
+}
+
+async function cmdUpgrade(args) {
+  const server = parseServerFlag(args);
+  let plan = '', flagToken = '';
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--plan') plan = args[++i];
+    else if (args[i] === '--token') flagToken = args[++i];
+    else if (args[i] === '--server') i++;
+    else if (!args[i].startsWith('-') && !plan) plan = args[i];
+  }
+  if (!plan) {
+    console.error('Usage: livearch upgrade --plan <free|pro|team> [--server <url>]');
+    process.exit(1);
+  }
+  const token = resolveToken(server, flagToken);
+  if (!token) { console.error(`Not logged in to ${server}. Run: livearch login --handle <you> --server ${server}`); process.exit(1); }
+  try {
+    const res = await apiJson(server, 'POST', '/api/billing/upgrade', { plan }, token);
+    console.log(`⬡  You're now on the ${String(res.plan).toUpperCase()} plan${res.price ? ` (€${res.price}/mo)` : ''} → ${server}`);
+    if (res.limits) {
+      const max = res.limits.maxProjects == null || res.limits.maxProjects > 1e9 ? 'unlimited' : res.limits.maxProjects;
+      console.log(`   Projects: ${max} · history: ${res.limits.historyDepth} · private projects: ${res.limits.privateProjects ? 'yes' : 'no'} · teams: ${res.limits.teams ? 'yes' : 'no'}`);
+    }
+  } catch (e) {
+    console.error(`✗ upgrade failed: ${e.message}`);
+    if (/501/.test(e.message)) console.error('  This server routes upgrades through Stripe checkout (LIVEARCH_BILLING=stripe).');
     process.exit(1);
   }
 }

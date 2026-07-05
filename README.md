@@ -291,7 +291,8 @@ More languages are planned — see [Roadmap](#roadmap).
 - [x] **Team collaboration** — multiple devs see the same live diagram, synced live via SSE (`livearch share`)
 - [x] **Accounts & scoped tokens** — `livearch login` claims a handle; only that account can publish under it, with private projects and snapshot history
 - [x] **Persistent datastore** — set `DATABASE_URL` to run on Neon Postgres instead of the filesystem (same API; auto-creates tables)
-- [ ] Managed SaaS — GitHub OAuth is wired but env-gated; team membership/roles are the remaining hosted work
+- [x] **Plan tiers with gating** — Free/Pro/Team; private projects, project count, and history depth are enforced server-side (`livearch upgrade`)
+- [ ] Managed SaaS — real Stripe billing (self-serve upgrade is stubbed), team membership/roles, and going-live GitHub OAuth are the remaining hosted work
 
 ---
 
@@ -365,7 +366,8 @@ LiveArch has one default command (watch) plus a few subcommands:
 | `livearch diff <base-ref> [head-ref]` | Compare the architecture between two git refs |
 | `livearch badge [path]` | Write an SVG architecture badge you can embed in your README |
 | `livearch login --handle <name>` | Create a hosted account, claim `<name>`, and save a token (`--server <url>`) |
-| `livearch whoami` / `livearch logout` | Show / clear the saved hosted login |
+| `livearch whoami` / `livearch logout` | Show / clear the saved hosted login (whoami shows your plan) |
+| `livearch upgrade --plan <pro\|team>` | Change your account plan (unlocks private projects + unlimited) |
 | `livearch push <handle>/<repo>` | Publish the architecture to a hosted server (permanent URL) |
 | `livearch share <handle>/<repo>` | Watch + publish on every save (viewers update live via SSE) |
 | `livearch --help` | Show help |
@@ -481,6 +483,13 @@ livearch share <you>/<repo> --server http://localhost:3000
 livearch share <you>/<repo> --private --server http://localhost:3000
 ```
 Once you claim a handle with `login`, **only your account can publish under it** — pushes with another account's token are rejected (403). Each push also appends to a rolling **snapshot history**. Prefer real GitHub sign-in? Set `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` and visit `/api/auth/github` — see [`server/README.md`](server/README.md).
+
+**Plans.** New accounts are **Free** (up to 3 public projects, 5-snapshot history). **Pro** adds private projects, unlimited projects, and 20-snapshot history; **Team** adds team features and 50-snapshot history. These limits are enforced server-side (a gated push returns `402` with an upgrade hint):
+```bash
+livearch whoami --server http://localhost:3000        # shows your plan + limits
+livearch upgrade --plan pro --server http://localhost:3000
+```
+In this self-host build the upgrade is immediate (no payment) — the honest stand-in for billing; production would route it through Stripe checkout (`LIVEARCH_BILLING=stripe`).
 
 By default this stores everything on the filesystem — set `DATABASE_URL` (e.g. Neon, provisioned via the Vercel Marketplace) and it runs on **Postgres** instead, with no other changes (tables auto-create; schema in [`server/db/schema.sql`](server/db/schema.sql)).
 
