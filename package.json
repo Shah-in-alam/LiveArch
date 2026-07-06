@@ -9,8 +9,17 @@
   "main": "lib/analyser.js",
   "scripts": {
     "start": "node bin/livearch.js",
-    "test": "node --test"
+    "test": "node --test",
+    "prepublishOnly": "npm test"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shah-in-alam/LiveArch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Shah-in-alam/LiveArch/issues"
+  },
+  "homepage": "https://github.com/Shah-in-alam/LiveArch#readme",
   "keywords": [
     "architecture",
     "diagram",
