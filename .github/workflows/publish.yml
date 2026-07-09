@@ -25,6 +25,21 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
+      # A release tag that disagrees with package.json publishes the wrong
+      # version, or dies later on npm's "cannot publish over" error, which does
+      # not name the real problem. Fail here instead, before anything ships.
+      # Skipped for workflow_dispatch, which has no release tag to compare.
+      - name: Verify tag matches package.json version
+        if: github.event_name == 'release'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Release tag v${tag} does not match package.json version ${pkg}. Bump package.json or retag."
+            exit 1
+          fi
+          echo "Tag and package.json agree on ${pkg}"
+
       - run: npm ci
       - run: npm test
 
