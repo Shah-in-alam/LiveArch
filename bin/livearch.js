@@ -25,6 +25,7 @@ const { analyse, IGNORE_DIRS } = require('../lib/analyser');
 const template = require('../lib/template');
 const { diffArch, formatDiff } = require('../lib/diff');
 const { badgeSvg, badgeMarkdown } = require('../lib/badge');
+const { version: VERSION } = require('../package.json');
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -35,6 +36,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
+    else if (a === '--version' || a === '-v') opts.version = true;
     else if (a === '--port') opts.port = parseInt(argv[++i], 10) || opts.port;
     else if (a === '--output') opts.output = argv[++i];
     else if (a === '--ignore') opts.ignore.push(argv[++i]);
@@ -99,6 +101,10 @@ function main() {
   if (raw[0] === 'team') return cmdTeam(raw.slice(1));
 
   const opts = parseArgs(raw);
+  if (opts.version) {
+    process.stdout.write(VERSION + '\n');
+    return;
+  }
   if (opts.help) {
     process.stdout.write(HELP + '\n');
     return;
@@ -395,8 +401,12 @@ function cmdBadge(args) {
   const outPath = path.resolve(root, output);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, svg);
-  console.log(`⬡  Wrote badge: ${output}  (${arch.nodes.length} nodes)`);
-  console.log(`   Embed in your README:  ${badgeMarkdown(output)}`);
+  // Report the path from where the user is standing; the embed snippet stays
+  // relative to the scanned project, which is where the README lives.
+  const shown = path.relative(process.cwd(), outPath) || outPath;
+  const embed = path.relative(root, outPath).split(path.sep).join('/');
+  console.log(`⬡  Wrote badge: ${shown}  (${arch.nodes.length} nodes)`);
+  console.log(`   Embed in your README:  ${badgeMarkdown(embed)}`);
 }
 
 /** Publish the current architecture to a hosted LiveArch server (Phase 1). */
