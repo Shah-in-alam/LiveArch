@@ -8,6 +8,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
+![LiveArch redraws your architecture diagram the moment you save a file](https://raw.githubusercontent.com/Shah-in-alam/LiveArch/main/docs/livearch-demo.gif)
+
+<sub>Save a file → the diagram updates itself: a new node appears and flashes in. No manual input.</sub>
+
 ```bash
 npx livearch      # any JS/TS · Python · Go · Rust project — no config, no signup
 ```
@@ -44,7 +48,7 @@ Diagram updates live — new nodes flash green ✅
 
 ## Demo
 
-> 🎬 A recorded GIF demo is coming soon (see [`docs/`](docs/)). In the meantime, try it yourself in under a minute:
+See it in action in the demo above ↑ — a Next.js + Prisma app whose diagram jumps from 15 to 16 nodes the instant a new component is saved. Try it yourself in under a minute:
 
 ```bash
 npx livearch            # in any JS/TS project
