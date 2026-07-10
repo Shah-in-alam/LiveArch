@@ -52,6 +52,39 @@ test('classifyFile maps directories to node types', () => {
   assert.equal(classifyFile('src/App.test.jsx').type, 'test');
 });
 
+test('classifyFile recognises the Next.js App Router conventions', () => {
+  // page.* / layout.* / route.* under app/ are dedicated conventions, not
+  // generic components. Both `app/` at the root and `src/app/` are valid.
+  assert.equal(classifyFile('app/page.tsx').type, 'page');
+  assert.equal(classifyFile('app/dashboard/page.tsx').type, 'page');
+  assert.equal(classifyFile('app/dashboard/layout.tsx').type, 'page');
+  assert.equal(classifyFile('src/app/page.tsx').type, 'page');
+  // route.ts is a route handler even outside an api/ folder.
+  assert.equal(classifyFile('app/dashboard/route.ts').type, 'route');
+  assert.equal(classifyFile('app/api/auth/route.ts').type, 'route');
+  // A non-convention file under app/ still classifies normally.
+  assert.equal(classifyFile('app/components/Button.tsx').type, 'component');
+});
+
+test('edges carry provenance: real import edges vs inferred logical guesses', () => {
+  const { root, files } = makeFixture();
+  const arch = analyse(root, files);
+  const find = (a, b) => arch.edges.find((e) => e.from === a && e.to === b);
+
+  // A real edge from an actual import statement (main.jsx → App.jsx).
+  const main = arch.nodes.find((n) => n.file === 'src/main.jsx');
+  const app = arch.nodes.find((n) => n.file === 'src/App.jsx');
+  const real = find(main.id, app.id);
+  assert.ok(real, 'import edge main → App exists');
+  assert.equal(real.provenance, 'import', 'import edge tagged provenance:import');
+
+  // Every edge is tagged, and logical guesses (e.g. framework → component
+  // "renders") are tagged inferred.
+  assert.ok(arch.edges.every((e) => e.provenance), 'all edges have provenance');
+  const inferred = arch.edges.filter((e) => e.provenance === 'inferred');
+  assert.ok(inferred.length > 0, 'some edges are inferred guesses');
+});
+
 test('analyse detects tech stack from package.json', () => {
   const { root, files } = makeFixture();
   const arch = analyse(root, files);

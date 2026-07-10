@@ -534,7 +534,9 @@ node /path/to/livearch/bin/livearch.js
 ## FAQ
 
 **Does it send my code anywhere?**
-No. Everything runs locally on your machine. Your code never leaves your computer. The WebSocket connection is local (`localhost:7842`).
+The free local tool sends nothing — analysis runs entirely on your machine and the WebSocket connection is local (`localhost:7842`). Your source code never leaves your computer.
+
+The one exception is the **optional AI Review** (`--review`), which you opt into and which requires your own `ANTHROPIC_API_KEY`. It sends the **derived architecture graph** (node/edge metadata — file paths, types, and connections), **not your source code**, to the Claude API. If you never run AI Review, nothing is sent anywhere.
 
 **Does it work with monorepos?**
 Yes. Run `livearch` from the root. It detects all packages.
