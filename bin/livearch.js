@@ -27,6 +27,17 @@ const { diffArch, formatDiff } = require('../lib/diff');
 const { badgeSvg, badgeMarkdown } = require('../lib/badge');
 const { version: VERSION } = require('../package.json');
 
+// Anchored regex matching any path whose segments include an ignored dir, on
+// both POSIX and Windows separators. Passing chokidar a regex (rather than a
+// `(p) => …` function) lets readdirp prune ignored trees instead of walking
+// into them and stating every entry — the difference between watching a
+// handful of files and ~21k at a repo root that contains node_modules.
+const IGNORE_DIR_RE = new RegExp(
+  '(^|[\\\\/])(' +
+    [...IGNORE_DIRS].map((d) => d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') +
+    ')([\\\\/]|$)',
+);
+
 // ---------------------------------------------------------------------------
 // Argument parsing
 // ---------------------------------------------------------------------------
@@ -189,7 +200,7 @@ function main() {
   // our own output file by its absolute path / basename, otherwise writing
   // it triggers a 'change' event → rebuild → write → infinite loop.
   const ignored = [
-    (p) => p.split(path.sep).some((seg) => IGNORE_DIRS.has(seg)),
+    IGNORE_DIR_RE,
     (p) => p === OUTPUT || path.basename(p) === opts.output,
     ...opts.ignore,
   ];
@@ -198,6 +209,7 @@ function main() {
     ignored,
     persistent: true,
     ignoreInitial: false,
+    followSymlinks: false,
     depth: 6,
   });
 
@@ -712,8 +724,8 @@ function cmdShare(args) {
   }
 
   const watcher = chokidar.watch(dir, {
-    ignored: [(p) => p.split(path.sep).some((seg) => IGNORE_DIRS.has(seg))],
-    persistent: true, ignoreInitial: false, depth: 6,
+    ignored: [IGNORE_DIR_RE],
+    persistent: true, ignoreInitial: false, followSymlinks: false, depth: 6,
   });
   let ready = false, timer = null;
   const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { pushNow(); }, 500); };
