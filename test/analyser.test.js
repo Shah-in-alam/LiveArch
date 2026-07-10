@@ -82,6 +82,32 @@ test('parseImports extracts relative specifiers only', () => {
   assert.ok(!specs.some((s) => !s.startsWith('.') && !s.startsWith('/')), 'no bare specifiers');
 });
 
+test('resolves tsconfig path aliases into real import edges', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-alias-'));
+  const write = (rel, content) => {
+    const abs = path.join(root, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content);
+    return abs;
+  };
+  write('package.json', JSON.stringify({ name: 'alias-app', dependencies: { next: '^14.0.0', react: '^18.0.0' } }));
+  // Next.js-style alias: "@/*" -> "./*" from baseUrl "."
+  write('tsconfig.json', JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['./*'] } } }));
+  const files = [
+    write('app/page.tsx', 'import { auth } from "@/lib/auth";\nimport Card from "@/components/Card";\nexport default function Page(){ return null; }'),
+    write('lib/auth.ts', 'export const auth = {};'),
+    write('components/Card.tsx', 'export default function Card(){ return null; }'),
+  ];
+  const arch = analyse(root, files);
+  const page = arch.nodes.find((n) => n.file === 'app/page.tsx');
+  const authNode = arch.nodes.find((n) => n.file === 'lib/auth.ts');
+  const card = arch.nodes.find((n) => n.file === 'components/Card.tsx');
+  assert.ok(page && authNode && card, 'all three nodes exist');
+  const has = (a, b) => arch.edges.some((e) => e.from === a.id && e.to === b.id && e.label === 'imports');
+  assert.ok(has(page, authNode), '@/lib/auth alias edge resolved (no-extension .ts)');
+  assert.ok(has(page, card), '@/components/Card alias edge resolved');
+});
+
 test('analyse builds REAL edges from import statements (v0.2)', () => {
   const { root, files } = makeFixture();
   const arch = analyse(root, files);
