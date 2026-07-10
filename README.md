@@ -1,19 +1,30 @@
 # ⬡ LiveArch
 
-> **Real-time architecture diagrams that live inside your repo and update automatically as you code.**
+> **Your codebase, drawn live.** Real-time architecture diagrams that live inside your repo and redraw themselves every time you save.
 
 [![CI](https://github.com/Shah-in-alam/LiveArch/actions/workflows/ci.yml/badge.svg)](https://github.com/Shah-in-alam/LiveArch/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/livearch.svg)](https://www.npmjs.com/package/livearch)
+[![npm downloads](https://img.shields.io/npm/dm/livearch.svg)](https://www.npmjs.com/package/livearch)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
+```bash
+npx livearch      # any JS/TS · Python · Go · Rust project — no config, no signup
+```
+
+**Architecture docs go stale the instant you write them. LiveArch doesn't.** It watches your files and regenerates an interactive diagram in under half a second every time you save — add a component, install a package, create a route, and the diagram updates itself. No manual input, no "describe your app to an AI," no drawing.
+
+- 🔄 **Live** — redraws on every save (~350 ms); new nodes flash green
+- 🧠 **Reads real code** — actual imports, routes, and Prisma models, not guesses (real edges are solid, inferred ones dashed)
+- 🌍 **Polyglot** — JS/TS incl. Next.js App Router, Python, Go, Rust, Prisma, and monorepos
+- 🔒 **Local & private** — one self-contained `.visualarch.html` in your repo; nothing leaves your machine
+- 🏷️ **Shareable** — drop a live architecture badge in your README ([how ↓](#add-a-livearch-badge-to-your-readme))
+
 ---
 
-## What is LiveArch?
+## How it works
 
-LiveArch is a developer tool that watches your project files and automatically generates a **live, interactive architecture diagram** saved as `.visualarch.html` inside your repo.
-
-Every time you save a file — add a component, install a package, create a route — the diagram updates in under half a second. No manual input. No paste. No describe. It just watches and draws.
+LiveArch watches your project files and generates a **live, interactive architecture diagram** saved as `.visualarch.html` inside your repo. Every save flows straight to your browser:
 
 ```
 You save a file in your editor
@@ -42,6 +53,25 @@ npx livearch            # in any JS/TS project
 ```
 
 Open `.visualarch.html` in your browser. Run `livearch` in your terminal. Now save any file — watch the diagram update instantly: new nodes flash green and a toast shows the changed file.
+
+---
+
+## Add a LiveArch badge to your README
+
+Show your project's shape at a glance — and let visitors discover LiveArch. One command writes a self-contained SVG badge (`⬡ architecture · N nodes`) you can commit and embed anywhere:
+
+```bash
+npx livearch badge                            # writes docs/architecture-badge.svg
+npx livearch badge . --output docs/arch.svg   # or choose your own path
+```
+
+Then paste the printed snippet into your README:
+
+```markdown
+![Architecture](docs/architecture-badge.svg)
+```
+
+Regenerate it whenever your architecture changes — or in CI on every push — to keep it current. Every badge points curious developers back here, so you're helping the next person draw their architecture too. 💙
 
 ---
 
@@ -416,16 +446,7 @@ Prints added/removed nodes and connections — great for reviewing what a branch
 
 ### README badge
 
-```bash
-livearch badge                              # writes docs/architecture-badge.svg
-livearch badge . --output docs/arch.svg     # custom path
-```
-
-Then embed it:
-
-```markdown
-![Architecture](docs/architecture-badge.svg)
-```
+`livearch badge` writes an embeddable SVG architecture badge — see [Add a LiveArch badge to your README](#add-a-livearch-badge-to-your-readme).
 
 ## Options
 
