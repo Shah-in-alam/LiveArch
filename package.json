@@ -9,7 +9,7 @@
   "main": "lib/analyser.js",
   "scripts": {
     "start": "node bin/livearch.js",
-    "test": "node --test test/",
+    "test": "node --test",
     "prepublishOnly": "npm test"
   },
   "repository": {
