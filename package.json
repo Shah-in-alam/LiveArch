@@ -1,6 +1,6 @@
 {
   "name": "livearch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Real-time architecture diagrams that live inside your repo and update automatically as you code.",
   "type": "commonjs",
   "bin": {
