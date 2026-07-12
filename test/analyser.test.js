@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { analyse, classifyFile, parseImports, detectCustomHook, parseRoutes, parsePrismaModels } = require('../lib/analyser');
+const { analyse, classifyFile, parseImports, detectCustomHook, parseRoutes, parseNestRoutes, parsePrismaModels } = require('../lib/analyser');
 const template = require('../lib/template');
 
 // Build a throwaway fixture project on disk.
@@ -83,6 +83,80 @@ test('App Router nodes are labelled by route, not the bare filename', () => {
     classifyFile('app/page.tsx').label,
     classifyFile('app/dashboard/page.tsx').label,
   );
+});
+
+test('classifyFile recognises NestJS filename conventions', () => {
+  // Nest keys off the filename suffix in feature folders, not the directory.
+  const ctrl = classifyFile('src/users/users.controller.ts');
+  assert.equal(ctrl.type, 'route');
+  assert.equal(ctrl.label, 'users'); // suffix stripped
+  assert.equal(classifyFile('src/users/users.service.ts').type, 'service');
+  assert.equal(classifyFile('src/users/users.repository.ts').type, 'service');
+  assert.equal(classifyFile('src/users/users.module.ts').type, 'module');
+  assert.equal(classifyFile('src/users/user.entity.ts').type, 'model');
+  assert.equal(classifyFile('src/auth/auth.guard.ts').type, 'middleware');
+  assert.equal(classifyFile('src/common/logging.interceptor.ts').type, 'middleware');
+  assert.equal(classifyFile('src/users/users.resolver.ts').type, 'route');
+  assert.equal(classifyFile('src/events/events.gateway.ts').type, 'route');
+  // DTOs are skipped entirely to avoid diagram noise.
+  assert.equal(classifyFile('src/users/create-user.dto.ts'), null);
+  // A bare "controller.ts" (no dotted suffix) must NOT be treated as a controller.
+  assert.notEqual(classifyFile('src/controller.ts').type, 'route');
+});
+
+test('parseNestRoutes reads @Controller + method decorators into routes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-nest-'));
+  const w = (rel, content) => {
+    const abs = path.join(root, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content);
+    return abs;
+  };
+  const usersCtrl = w('users.controller.ts',
+    '@Controller("users")\nexport class UsersController {\n' +
+    '  @Get() findAll() {}\n' +
+    '  @Get(":id") findOne() {}\n' +
+    '  @Post() create() {}\n}\n');
+  const routes = parseNestRoutes(usersCtrl);
+  const keys = routes.map((r) => r.method + ' ' + r.route).sort();
+  assert.deepEqual(keys, ['GET /users', 'GET /users/:id', 'POST /users']);
+
+  // No @Controller path -> routes resolve against root.
+  const appCtrl = w('app.controller.ts', '@Controller()\nexport class AppController {\n  @Get("health") health() {}\n}\n');
+  assert.deepEqual(parseNestRoutes(appCtrl).map((r) => r.method + ' ' + r.route), ['GET /health']);
+
+  // A file with no decorators yields nothing.
+  const plain = w('plain.ts', 'export const x = 1;\n');
+  assert.deepEqual(parseNestRoutes(plain), []);
+});
+
+test('analyse builds a NestJS graph (nodes + endpoints)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-nestapp-'));
+  const w = (rel, content) => {
+    const abs = path.join(root, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content);
+    return abs;
+  };
+  w('package.json', JSON.stringify({ name: 'nest-app', dependencies: { '@nestjs/core': '^10.0.0', '@nestjs/common': '^10.0.0' } }));
+  const files = [
+    w('src/app.module.ts', 'export class AppModule {}'),
+    w('src/users/users.module.ts', 'export class UsersModule {}'),
+    w('src/users/users.controller.ts',
+      'import { UsersService } from "./users.service";\n@Controller("users")\nexport class UsersController {\n  @Get() findAll() {}\n  @Post() create() {}\n}\n'),
+    w('src/users/users.service.ts', 'export class UsersService {}'),
+    w('src/users/user.entity.ts', 'export class User {}'),
+  ];
+  // NestJS stack node is detected from the dependency map.
+  const arch = analyse(root, files, { endpoints: true });
+  assert.ok(arch.nodes.some((n) => n.id === 'dep-nest'), 'NestJS stack node present');
+  assert.equal(arch.nodes.find((n) => n.file === 'src/users/users.controller.ts').type, 'route');
+  assert.equal(arch.nodes.find((n) => n.file === 'src/users/users.service.ts').type, 'service');
+  assert.equal(arch.nodes.find((n) => n.file === 'src/users/user.entity.ts').type, 'model');
+  // Endpoints parsed from decorators (opt-in via { endpoints: true }).
+  const endpoints = arch.nodes.filter((n) => n.type === 'route' && /^route-/.test(n.id)).map((n) => n.label);
+  assert.ok(endpoints.includes('GET /users'), 'GET /users endpoint');
+  assert.ok(endpoints.includes('POST /users'), 'POST /users endpoint');
 });
 
 test('edges carry provenance: real import edges vs inferred logical guesses', () => {
