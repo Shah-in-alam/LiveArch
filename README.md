@@ -142,6 +142,7 @@ Builds a self-contained `.visualarch.html` file with:
 | `vue` | 💚 Vue |
 | `express` | 🚂 Express |
 | `fastify` | ⚡ Fastify |
+| `@nestjs/core` | 🐈 NestJS |
 | `mongoose`, `mongodb` | 🍃 MongoDB |
 | `pg`, `postgres` | 🐘 PostgreSQL |
 | `prisma` | ◈ Prisma |
@@ -270,6 +271,7 @@ LiveArch works with any JavaScript/TypeScript project. It is especially good wit
 - Next.js apps
 - Vue / Nuxt apps
 - Express / Fastify APIs
+- NestJS apps — controllers, services, modules, guards, and `@Controller`/`@Get` routes
 - Full-stack monorepos (frontend + backend in one repo)
 - Any project with a `package.json`
 - **Python** (`requirements.txt` / `pyproject.toml` / `setup.py`) — FastAPI, Django, Flask, SQLAlchemy, …
@@ -294,7 +296,7 @@ More languages are planned — see [Roadmap](#roadmap).
 ### v0.2 — Smarter Analysis ✅
 - [x] Parse actual `import` statements to build real edges
 - [x] Detect custom hooks from file content
-- [x] Detect API endpoints from Express/Fastify routes (opt-in `--routes`)
+- [x] Detect API endpoints from Express/Fastify routes and NestJS `@Controller`/`@Get` decorators (opt-in `--routes`)
 - [x] Detect database models from Prisma schema
 - [x] Python project support (`requirements.txt` / `pyproject.toml` / `setup.py`, FastAPI, Django)
 - [x] Go project support (`go.mod` — Gin, Echo, Fiber, chi, GORM, gRPC)
