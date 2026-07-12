@@ -66,6 +66,25 @@ test('classifyFile recognises the Next.js App Router conventions', () => {
   assert.equal(classifyFile('app/components/Button.tsx').type, 'component');
 });
 
+test('App Router nodes are labelled by route, not the bare filename', () => {
+  // Every route segment's file is literally named page.tsx / layout.tsx, so
+  // labelling by filename shows "page" many times. Label by route instead.
+  assert.equal(classifyFile('app/page.tsx').label, '/');
+  assert.equal(classifyFile('app/dashboard/page.tsx').label, '/dashboard');
+  assert.equal(classifyFile('src/app/settings/page.tsx').label, '/settings');
+  assert.equal(classifyFile('app/api/users/route.ts').label, '/api/users');
+  // layout/etc. keep the route but stay distinct from a sibling page.
+  assert.equal(classifyFile('app/layout.tsx').label, 'layout');
+  assert.equal(classifyFile('app/dashboard/layout.tsx').label, '/dashboard layout');
+  // route groups like (marketing) don't affect the URL — drop them.
+  assert.equal(classifyFile('app/(marketing)/about/page.tsx').label, '/about');
+  // two different page.tsx files must not collide on their label.
+  assert.notEqual(
+    classifyFile('app/page.tsx').label,
+    classifyFile('app/dashboard/page.tsx').label,
+  );
+});
+
 test('edges carry provenance: real import edges vs inferred logical guesses', () => {
   const { root, files } = makeFixture();
   const arch = analyse(root, files);
