@@ -85,6 +85,30 @@ test('App Router nodes are labelled by route, not the bare filename', () => {
   );
 });
 
+test('classifyFile only treats shallow index/main/app as entry points', () => {
+  // Real entry points (root or one level deep).
+  assert.equal(classifyFile('src/main.jsx').type, 'entry');
+  assert.equal(classifyFile('src/index.ts').type, 'entry');
+  assert.equal(classifyFile('index.js').type, 'entry');
+  // Barrel files deeper in the tree are NOT app entry points.
+  assert.notEqual(classifyFile('src/components/Button/index.ts').type, 'entry');
+  assert.notEqual(classifyFile('lib/utils/index.ts').type, 'entry');
+});
+
+test('classifyFile skips build/tool config, stories, and treats e2e-spec as test', () => {
+  // Non-Vite config files are not architecture.
+  assert.equal(classifyFile('next.config.js'), null);
+  assert.equal(classifyFile('tailwind.config.ts'), null);
+  assert.equal(classifyFile('jest.config.mjs'), null);
+  // vite.config stays a Vite tooling node (deliberate).
+  assert.equal(classifyFile('vite.config.ts').id, 'dep-vite');
+  // Storybook stories are dev artifacts.
+  assert.equal(classifyFile('src/Button.stories.tsx'), null);
+  assert.equal(classifyFile('src/Button.stories.mdx'), null);
+  // NestJS e2e tests are tests.
+  assert.equal(classifyFile('test/app.e2e-spec.ts').type, 'test');
+});
+
 test('classifyFile skips TypeScript declaration files (.d.ts)', () => {
   // .d.ts are type declarations, not architecture — they must not become nodes
   // (previously they showed up as generic backend "module" nodes).
