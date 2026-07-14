@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { analyse, classifyFile, parseImports, detectCustomHook, parseRoutes, parseNestRoutes, parsePrismaModels } = require('../lib/analyser');
+const { analyse, classifyFile, parseImports, resolveImport, detectCustomHook, parseRoutes, parseNestRoutes, parsePrismaModels } = require('../lib/analyser');
 const template = require('../lib/template');
 
 // Build a throwaway fixture project on disk.
@@ -240,6 +240,29 @@ test('parseImports extracts relative specifiers only', () => {
   assert.ok(specs.includes('./components/Shop.jsx'), 'relative import captured');
   // bare package imports (e.g. "react") must be excluded
   assert.ok(!specs.some((s) => !s.startsWith('.') && !s.startsWith('/')), 'no bare specifiers');
+});
+
+test('parseImports captures re-exports (barrel files)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-barrel-'));
+  const abs = path.join(root, 'index.ts');
+  fs.writeFileSync(abs, 'export { A } from "./a";\nexport * from "./b";\nexport * as ns from "./c";\nimport D from "./d";\nexport const local = "./not-an-import";\n');
+  const specs = parseImports(abs);
+  assert.ok(specs.includes('./a'), 're-export { } from captured');
+  assert.ok(specs.includes('./b'), 'export * from captured');
+  assert.ok(specs.includes('./c'), 'export * as ns from captured');
+  assert.ok(specs.includes('./d'), 'plain import still captured');
+  // `export const local = "./x"` is a value, not a re-export — must not be captured.
+  assert.ok(!specs.includes('./not-an-import'), 'string values are not treated as imports');
+});
+
+test('resolveImport resolves .js/.jsx specifiers to .ts/.tsx files (NodeNext)', () => {
+  const relSet = new Set(['src/foo.ts', 'src/bar.tsx', 'src/real.js', 'src/baz/index.ts']);
+  const r = (spec) => resolveImport('src/app.ts', spec, relSet);
+  assert.equal(r('./foo.js'), 'src/foo.ts', '.js specifier -> .ts file');
+  assert.equal(r('./bar.jsx'), 'src/bar.tsx', '.jsx specifier -> .tsx file');
+  assert.equal(r('./real.js'), 'src/real.js', 'a real .js file still resolves as-is');
+  assert.equal(r('./foo'), 'src/foo.ts', 'extensionless still works');
+  assert.equal(r('./baz'), 'src/baz/index.ts', 'directory /index still works');
 });
 
 test('resolves tsconfig path aliases into real import edges', () => {
