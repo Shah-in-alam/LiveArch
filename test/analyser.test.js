@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { analyse, classifyFile, parseImports, resolveImport, detectCustomHook, parseRoutes, parseNestRoutes, parsePrismaModels } = require('../lib/analyser');
+const { analyse, classifyFile, parseImports, resolveImport, loadAliases, detectCustomHook, parseRoutes, parseNestRoutes, parsePrismaModels } = require('../lib/analyser');
 const template = require('../lib/template');
 
 // Build a throwaway fixture project on disk.
@@ -275,6 +275,32 @@ test('resolveImport resolves .js/.jsx specifiers to .ts/.tsx files (NodeNext)', 
   assert.equal(r('./real.js'), 'src/real.js', 'a real .js file still resolves as-is');
   assert.equal(r('./foo'), 'src/foo.ts', 'extensionless still works');
   assert.equal(r('./baz'), 'src/baz/index.ts', 'directory /index still works');
+});
+
+test('loadAliases handles comments, wildcard paths, BOM, and extends chains', () => {
+  const mk = () => fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-tsc-'));
+
+  // B — a commented tsconfig with wildcard paths (the `/*` must not be eaten
+  // by comment stripping). `tsc --init` produces commented tsconfigs.
+  let d = mk();
+  fs.writeFileSync(path.join(d, 'tsconfig.json'),
+    '{\n  // editor config\n  "compilerOptions": {\n    "baseUrl": ".",\n    "paths": { "@/*": ["./src/*"], }, /* aliases */\n  },\n}');
+  let a = loadAliases(d);
+  assert.ok(a && a.paths.length === 1, 'commented tsconfig with wildcard path parses');
+  assert.equal(a.paths[0].targets[0].prefix, './src/', 'wildcard path target intact');
+
+  // C — a UTF-8 BOM must not break parsing.
+  d = mk();
+  fs.writeFileSync(path.join(d, 'tsconfig.json'), '﻿' + JSON.stringify({ compilerOptions: { paths: { '@/*': ['./src/*'] } } }));
+  assert.ok(loadAliases(d), 'BOM-prefixed tsconfig parses');
+
+  // A — extends chain: paths live in a base config the child extends.
+  d = mk();
+  fs.writeFileSync(path.join(d, 'tsconfig.base.json'), JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['./src/*'] } } }));
+  fs.writeFileSync(path.join(d, 'tsconfig.json'), JSON.stringify({ extends: './tsconfig.base.json', compilerOptions: { strict: true } }));
+  a = loadAliases(d);
+  assert.ok(a && a.paths.length === 1, 'paths inherited from extended base config');
+  assert.equal(a.paths[0].prefix, '@/', 'extended alias prefix loaded');
 });
 
 test('resolves tsconfig path aliases into real import edges', () => {
