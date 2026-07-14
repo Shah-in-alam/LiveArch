@@ -85,6 +85,16 @@ test('App Router nodes are labelled by route, not the bare filename', () => {
   );
 });
 
+test('classifyFile skips TypeScript declaration files (.d.ts)', () => {
+  // .d.ts are type declarations, not architecture — they must not become nodes
+  // (previously they showed up as generic backend "module" nodes).
+  assert.equal(classifyFile('src/types/api.d.ts'), null);
+  assert.equal(classifyFile('index.d.ts'), null);
+  assert.equal(classifyFile('src/global.d.ts'), null);
+  // A regular .ts file is still classified.
+  assert.ok(classifyFile('src/lib/util.ts'));
+});
+
 test('classifyFile recognises NestJS filename conventions', () => {
   // Nest keys off the filename suffix in feature folders, not the directory.
   const ctrl = classifyFile('src/users/users.controller.ts');
