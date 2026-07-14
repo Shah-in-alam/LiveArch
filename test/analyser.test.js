@@ -242,6 +242,18 @@ test('parseImports extracts relative specifiers only', () => {
   assert.ok(!specs.some((s) => !s.startsWith('.') && !s.startsWith('/')), 'no bare specifiers');
 });
 
+test('parseRoutes ignores client api.get() calls but keeps server routes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-routes-'));
+  const w = (rel, c) => { const a = path.join(root, rel); fs.writeFileSync(a, c); return a; };
+  // A client-side axios instance named `api` is NOT a server route definition.
+  const client = w('client.ts', 'const api = axios.create();\nexport const g = () => api.get("/users");\nexport const p = () => api.post("/users");');
+  assert.deepEqual(parseRoutes(client), [], 'client api.get/post are not routes');
+  // Real server frameworks are still detected.
+  const server = w('server.ts', 'app.get("/");\nrouter.post("/login");\nfastify.delete("/x");');
+  const keys = parseRoutes(server).map((r) => r.method + ' ' + r.route).sort();
+  assert.deepEqual(keys, ['DELETE /x', 'GET /', 'POST /login']);
+});
+
 test('parseImports captures re-exports (barrel files)', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'livearch-barrel-'));
   const abs = path.join(root, 'index.ts');
