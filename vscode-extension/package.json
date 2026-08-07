@@ -5,11 +5,20 @@
   "version": "0.1.0",
   "publisher": "shah-in-alam",
   "license": "MIT",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": ["Visualization", "Other"],
-  "keywords": ["architecture", "diagram", "visualization", "developer-tools"],
+  "keywords": ["architecture", "diagram", "visualization", "developer-tools", "nextjs", "nestjs"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shah-in-alam/LiveArch.git",
+    "directory": "vscode-extension"
+  },
+  "bugs": { "url": "https://github.com/Shah-in-alam/LiveArch/issues" },
+  "homepage": "https://github.com/Shah-in-alam/LiveArch#readme",
+  "galleryBanner": { "color": "#0f1420", "theme": "dark" },
   "main": "./extension.js",
   "activationEvents": [
     "onStartupFinished"
